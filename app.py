@@ -155,8 +155,7 @@ COLUMN_MAP = {
     'توريد وتمديد كوابل أرضية - تراكمي فعلي': 'L_Cable_Actual',
     'توريد وتمديد كوابل أرضية - شهري مستهدف': 'L_Cable_Monthly_Target', 
     'توريد وتمديد كوابل أرضية - شهري فعلي': 'L_Cable_Monthly_Actual',
-} # <--- الإغلاق الصحيح للقاموس
-
+} 
 # إنشاء الخريطة العكسية لاستخدامها في العرض
 REVERSE_COLUMN_MAP = {v: k for k, v in COLUMN_MAP.items()}
 
@@ -258,7 +257,7 @@ def load_and_process_data():
     else:
         latest_reports = df.copy() 
 
-    return df, latest_reports
+    return df, latest_reports_df
 
 # استدعاء الدالة
 df, latest_reports_df = load_and_process_data()
@@ -272,24 +271,28 @@ if df.empty:
 # 3. واجهة الفلاتر (Interface Filters)
 # ----------------------------------------------
 
+# تم تعديل هذه الدالة لإرجاع قائمة التصنيفات التي اختارها المستخدم أيضاً
 def filter_sidebar(df):
     st.sidebar.header("خيارات الفلترة")
 
     # قائمة الفلاتر المطلوبة
     axis_options = df['Axis'].dropna().unique() if 'Axis' in df.columns else []
     supervisor_options = df['Supervisor_Engineer'].dropna().unique() if 'Supervisor_Engineer' in df.columns else []
-    category_options = df['Category'].dropna().unique() if 'Category' in df.columns else []
+    category_options = df[df['Category'] != 'غير محدد']['Category'].dropna().unique().tolist() if 'Category' in df.columns else []
     contract_options = df['Contract_ID'].dropna().unique() if 'Contract_ID' in df.columns else []
     
     selected_axis = st.sidebar.multiselect("المحور:", options=axis_options)
     selected_supervisor = st.sidebar.multiselect("المهندس المشرف:", options=supervisor_options)
-    selected_category = st.sidebar.multiselect("التصنيف:", options=category_options)
+    # الاحتفاظ بقائمة التصنيفات التي اختارها المستخدم
+    selected_category = st.sidebar.multiselect("التصنيف:", options=category_options) 
     selected_contract = st.sidebar.multiselect("رقم العقد:", options=contract_options)
     
     status_options = ['متقدم', 'متأخر', 'مطابق', 'غير معلوم']
     selected_status = st.sidebar.multiselect("حالة المشروع:", options=status_options)
     
     # فلتر التاريخ
+    start_date = pd.Timestamp.min
+    end_date = pd.Timestamp.max
     if 'Report_Date' in df.columns and pd.api.types.is_datetime64_any_dtype(df['Report_Date']) and not df['Report_Date'].empty:
         min_date = df['Report_Date'].min().date()
         max_date = df['Report_Date'].max().date()
@@ -300,9 +303,6 @@ def filter_sidebar(df):
         )
         start_date = pd.to_datetime(date_range[0])
         end_date = pd.to_datetime(date_range[1])
-    else:
-        start_date = pd.Timestamp.min
-        end_date = pd.Timestamp.max
 
     # تطبيق الفلاتر
     df_filtered = df.copy()
@@ -314,7 +314,8 @@ def filter_sidebar(df):
     
     df_filtered = df_filtered[(df_filtered['Report_Date'] >= start_date) & (df_filtered['Report_Date'] <= end_date)]
     
-    return df_filtered
+    # إرجاع كل من DataFrame المفلتر وقائمة التصنيفات المختارة
+    return df_filtered, selected_category
 
 # ----------------------------------------------
 # 4. بناء الصفحات والتنقل
@@ -338,10 +339,15 @@ if page == "executive_summary":
     st.title("ملخص تنفيذي: المؤشرات الرئيسية")
     st.markdown("---")
     
-    filtered_df = filter_sidebar(df)
+    # هنا لا نحتاج قائمة التصنيفات، نستقبل DataFrame فقط
+    filtered_df, _ = filter_sidebar(df)
     
     # تجميع البيانات الأخيرة بعد الفلترة
-    filtered_latest_df = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
+    if not filtered_df.empty:
+        filtered_latest_df = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
+    else:
+        st.warning("لا توجد بيانات مطابقة لمعايير الفلترة الحالية.")
+        st.stop()
 
     # 1. حساب المؤشرات المطلوبة
     total_projects = filtered_latest_df['Contract_ID'].nunique()
@@ -430,15 +436,38 @@ elif page == "detailed_analysis":
     st.title("تحليل تفصيلي: تتبع الأداء التخصصي")
     st.markdown("---")
     
-    filtered_df = filter_sidebar(df)
+    # استقبال كل من DataFrame المفلتر وقائمة التصنيفات المختارة
+    filtered_df, selected_category_list = filter_sidebar(df)
     
-    # 1. تحديد التصنيف المختار من الفلاتر - (تم التعديل هنا لتصفية التصنيفات غير الصالحة)
-    all_unique_categories = filtered_df['Category'].dropna().unique()
-    # نحتفظ فقط بالتصنيفات التي يمكن تطبيق التحليل التخصصي عليها
-    selected_categories = [cat for cat in all_unique_categories if cat in ['انارة', 'طرق']]
+    # 1. تحديد التصنيف المختار الصالح (من قائمة اختيار المستخدم)
+    # نحتفظ فقط بالتصنيفات التي اختارها المستخدم والتي يمكن تطبيق التحليل التخصصي عليها
+    valid_selected_categories = [cat for cat in selected_category_list if cat in ['انارة', 'طرق']]
     
+    # 2. تطبيق المنطق الشرطي للعرض
+    
+    if len(valid_selected_categories) == 0:
+        # إذا كانت قائمة اختيارات المستخدم الصالحة فارغة
+        if filtered_df.empty:
+            st.warning("لا توجد بيانات للعقود في الإطار الزمني أو الفلاتر المحددة. يرجى تعديل خيارات الفلترة.")
+        else:
+            # هنا يتم عرض التحذير إذا لم يختر المستخدم تصنيفاً صالحاً أو اختار 'غير محدد'
+            st.warning("يرجى اختيار **تصنيف واحد (إنارة أو طرق)** من القائمة الجانبية لعرض المؤشرات التخصصية.")
+        st.stop()
+        
+    elif len(valid_selected_categories) > 1:
+        # الحالة الثالثة: تم اختيار أكثر من تصنيف صالح
+        st.warning("تم اختيار أكثر من تصنيف صالح (إنارة/طرق) في الفلتر. يرجى اختيار **تصنيف واحد فقط** لتفعيل التحليل التخصصي.")
+        st.stop()
+
+    # الآن، يجب أن يكون لدينا تصنيف صالح واحد فقط (len(valid_selected_categories) == 1)
+    current_category = valid_selected_categories[0]
+        
+    # تحقق إضافي إذا كانت البيانات فارغة بعد تطبيق كل الفلاتر
+    if filtered_df.empty:
+        st.warning(f"لا توجد بيانات للعقود المصنفة كـ **{current_category}** ضمن الفلاتر المطبقة (التاريخ، المحور، المهندس المشرف، الخ.). يرجى تعديل هذه الفلاتر.")
+        st.stop()
+
     # تحديد المؤشرات التي سيتم عرضها بناءً على التصنيف
-    
     LIGHTING_METRICS = [
         'L_Rep_Col_Target', 'L_Rep_Col_Actual', 'L_Rep_Col_Monthly_Target', 'L_Rep_Col_Monthly_Actual',
         'L_Maint_Col_Target', 'L_Maint_Col_Actual', 'L_Maint_Col_Monthly_Target', 'L_Maint_Col_Monthly_Actual',
@@ -458,91 +487,70 @@ elif page == "detailed_analysis":
         'Emergency_Cum_Target', 'Emergency_Cum_Actual', 'Emergency_Monthly_Target', 'Emergency_Monthly_Actual',
         'Wash_Cum_Target', 'Wash_Cum_Actual', 'Wash_Monthly_Target', 'Wash_Monthly_Actual',
         'Other_Cum_Target', 'Other_Cum_Actual', 'Other_Monthly_Target', 'Other_Monthly_Actual',
-        # دورات الحفر (Holes) - لا يتم حساب المتوسط لها مباشرة في الـ KPI cards
     ]
-    
-    # 2. تطبيق المنطق الشرطي للعرض
-    
-    if len(selected_categories) == 0:
-        st.warning("يرجى اختيار **تصنيف واحد (إنارة أو طرق)** من القائمة الجانبية لعرض المؤشرات التخصصية، أو لا توجد بيانات مسجلة للتصنيفات المطلوبة ضمن هذه الفلاتر.")
-        st.stop()
-        
-    if len(selected_categories) == 1:
-        current_category = selected_categories[0] # سيكون إما 'انارة' أو 'طرق'
-        
-        # تصفية البيانات التي تحمل التصنيف الحالي فقط
-        filtered_df = filtered_df[filtered_df['Category'] == current_category].copy()
-        
-        if current_category == 'انارة':
-            st.info("عرض المؤشرات التراكمية والشهرية الخاصة بـ **الإنارة**.")
-            target_metrics = [m for m in LIGHTING_METRICS if m in filtered_df.columns]
-            chart_title = "تتبع أداء أعمال الإنارة التراكمي (استبدال أعمدة)"
-            actual_col = 'L_Rep_Col_Actual'
-            target_col = 'L_Rep_Col_Target'
+
+    if current_category == 'انارة':
+        st.info("عرض المؤشرات التراكمية والشهرية الخاصة بـ **الإنارة**.")
+        target_metrics = [m for m in LIGHTING_METRICS if m in filtered_df.columns]
+        chart_title = "تتبع أداء أعمال الإنارة التراكمي (استبدال أعمدة)"
+        actual_col = 'L_Rep_Col_Actual'
+        target_col = 'L_Rep_Col_Target'
             
-        elif current_category == 'طرق':
-            st.info("عرض المؤشرات التراكمية والشهرية الخاصة بـ **الطرق**.")
-            target_metrics = [m for m in ROADS_METRICS if m in filtered_df.columns]
-            chart_title = "تتبع أداء أعمال الطرق التراكمي (الفرقة الرئيسية)"
-            actual_col = 'FR_Cum_Actual'
-            target_col = 'FR_Cum_Target'
+    elif current_category == 'طرق':
+        st.info("عرض المؤشرات التراكمية والشهرية الخاصة بـ **الطرق**.")
+        target_metrics = [m for m in ROADS_METRICS if m in filtered_df.columns]
+        chart_title = "تتبع أداء أعمال الطرق التراكمي (الفرقة الرئيسية)"
+        actual_col = 'FR_Cum_Actual'
+        target_col = 'FR_Cum_Target'
         
-        # 3. عرض الرسوم البيانية التراكمية (المتوسط)
-        
-        # حساب المتوسط الشهري للتراكمي
-        if 'Report_Date' in filtered_df.columns and not filtered_df.empty:
-            # التأكد من أن الأعمدة المطلوبة موجودة في DataFrame قبل Groupby
-            if actual_col in filtered_df.columns and target_col in filtered_df.columns:
-                monthly_data = filtered_df.groupby(filtered_df['Report_Date'].dt.to_period('M'))[[
-                    actual_col, target_col
-                ]].mean().reset_index()
+    # 3. عرض الرسوم البيانية التراكمية (المتوسط)
+    
+    # حساب المتوسط الشهري للتراكمي
+    if 'Report_Date' in filtered_df.columns and not filtered_df.empty:
+        if actual_col in filtered_df.columns and target_col in filtered_df.columns:
+            monthly_data = filtered_df.groupby(filtered_df['Report_Date'].dt.to_period('M'))[[
+                actual_col, target_col
+            ]].mean().reset_index()
                 
-                monthly_data['Report_Date'] = monthly_data['Report_Date'].dt.to_timestamp()
+            monthly_data['Report_Date'] = monthly_data['Report_Date'].dt.to_timestamp()
                 
-                fig_cum = px.line(
-                    monthly_data, x='Report_Date', y=[actual_col, target_col], 
-                    title=chart_title,
-                    labels={'value': 'النسبة التراكمية', 'Report_Date': 'التاريخ', 'variable': 'النوع'},
-                    color_discrete_map={actual_col: SUCCESS_COLOR, target_col: ACCENT_COLOR}
-                )
-                st.plotly_chart(fig_cum, use_container_width=True)
-            else:
-                 st.warning("لا يمكن عرض المخطط الزمني: أعمدة المؤشر الرئيسي مفقودة.")
-        elif filtered_df.empty:
-            st.warning(f"لا توجد بيانات للعقود المصنفة كـ **{current_category}** ضمن الفلاتر المطبقة.")
-            st.stop()
+            fig_cum = px.line(
+                monthly_data, x='Report_Date', y=[actual_col, target_col], 
+                title=chart_title,
+                labels={'value': 'النسبة التراكمية', 'Report_Date': 'التاريخ', 'variable': 'النوع'},
+                color_discrete_map={actual_col: SUCCESS_COLOR, target_col: ACCENT_COLOR}
+            )
+            st.plotly_chart(fig_cum, use_container_width=True)
         else:
-            st.warning("لا يمكن عرض المخطط الزمني بسبب عدم وجود عمود 'Report_Date'.")
-
-
-        st.markdown("---")
-        
-        # 4. عرض جميع المؤشرات التخصصية في بطاقات
-        st.subheader(f"جميع مؤشرات الأداء التخصصية لـ **{current_category}** (المتوسط)")
-        
-        cols = st.columns(4)
-        col_index = 0
-        
-        # استخدام البيانات المفلترة للوصول إلى آخر تقرير لكل عقد
-        latest_per_contract = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
-        
-        for metric in target_metrics:
-            avg_value = latest_per_contract[metric].fillna(0).mean()
-            
-            # استخدام المتغير العام REVERSE_COLUMN_MAP
-            arabic_name = REVERSE_COLUMN_MAP.get(metric, metric)
-            
-            if 'Rate' in metric or 'Cum' in metric or 'Monthly' in metric:
-                 display_value = f"{avg_value * 100:.2f}%"
-            else:
-                 display_value = f"{avg_value:,.2f}"
-            
-            cols[col_index % 4].metric(arabic_name, display_value)
-            col_index += 1
-                
+            st.warning("لا يمكن عرض المخطط الزمني: أعمدة المؤشر الرئيسي مفقودة.")
     else:
-        # الحالة الثالثة: تم اختيار أكثر من تصنيف (أو وجود أكثر من تصنيف صالح)
-        st.warning("تم اختيار أكثر من تصنيف صالح (إنارة/طرق) في الفلتر. يرجى اختيار **تصنيف واحد فقط** لتفعيل التحليل التخصصي.")
+        st.warning("لا يمكن عرض المخطط الزمني بسبب عدم وجود عمود 'Report_Date' أو البيانات فارغة.")
+
+
+    st.markdown("---")
+        
+    # 4. عرض جميع المؤشرات التخصصية في بطاقات
+    st.subheader(f"جميع مؤشرات الأداء التخصصية لـ **{current_category}** (المتوسط)")
+        
+    cols = st.columns(4)
+    col_index = 0
+        
+    # استخدام البيانات المفلترة للوصول إلى آخر تقرير لكل عقد
+    latest_per_contract = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
+        
+    for metric in target_metrics:
+        avg_value = latest_per_contract[metric].fillna(0).mean()
+            
+        # استخدام المتغير العام REVERSE_COLUMN_MAP
+        arabic_name = REVERSE_COLUMN_MAP.get(metric, metric)
+            
+        if 'Rate' in metric or 'Cum' in metric or 'Monthly' in metric:
+            display_value = f"{avg_value * 100:.2f}%"
+        else:
+            display_value = f"{avg_value:,.2f}"
+            
+        cols[col_index % 4].metric(arabic_name, display_value)
+        col_index += 1
 
 # ----------------------------------------------------
 # -------------------- صفحة عرض كامل التفاصيل --------------------
@@ -552,9 +560,14 @@ elif page == "raw_data_view":
     st.title("عرض كامل التفاصيل (البيانات الخام)")
     st.markdown("---")
     
-    filtered_df = filter_sidebar(df)
+    # هنا لا نحتاج قائمة التصنيفات، نستقبل DataFrame فقط
+    filtered_df, _ = filter_sidebar(df)
     
     st.subheader("جدول بيانات التقارير المفصل")
+    
+    if filtered_df.empty:
+         st.warning("لا توجد بيانات مطابقة لمعايير الفلترة الحالية.")
+         st.stop()
     
     display_cols_brief = [
         'Contract_ID', 'Report_Date', 'Contractor', 'Supervisor_Engineer', 'Project_Name', 
