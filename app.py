@@ -252,12 +252,14 @@ def load_and_process_data():
     df['Project_Deviation_Status'] = df['Actual_Deviation_Rate'].apply(get_deviation_status)
         
     # استخلاص آخر تقرير لكل عقد
+    latest_reports = pd.DataFrame() # تعريفها في النطاق الخارجي للدالة
     if not df['Report_Date'].empty and 'Contract_ID' in df.columns:
         latest_reports = df.loc[df.groupby('Contract_ID')['Report_Date'].idxmax()]
     else:
         latest_reports = df.copy() 
 
-    return df, latest_reports_df
+    # --- التصحيح هنا: تغيير latest_reports_df إلى latest_reports ---
+    return df, latest_reports
 
 # استدعاء الدالة
 df, latest_reports_df = load_and_process_data()
