@@ -84,8 +84,7 @@ def load_and_process_data():
         df = pd.DataFrame(data)
 
     except Exception as e:
-        # يجب أن يكون هذا الجزء الآن للتعامل مع أخطاء الاتصال أو الصلاحيات
-        st.error(f"حدث خطأ أثناء جلب البيانات من Airtable. (هل المفاتيح صحيحة؟): {e}")
+        st.error(f"حدث خطأ أثناء جلب البيانات من Airtable. (هل المفاتيح والصلاحيات صحيحة؟): {e}")
         return pd.DataFrame(), pd.DataFrame() 
 
     # ------------------ بدء منطق المعالجة ------------------
@@ -101,7 +100,8 @@ def load_and_process_data():
         'نسبة الانجاز الفعلية': 'Actual_Completion_Rate', 'نسبة المدة المنقضية': 'Elapsed_Time_Rate',
         'نسبة الإنحراف الفعلية': 'Actual_Deviation_Rate', 'مؤشر أداء المقاول حسب الاوزان المستهدف': 'Target_Weighted_Index',
         'مؤشر أداء المقاول حسب الاوزان الفعلى': 'Actual_Weighted_Index', 'قيمة العقد (ريال)': 'Total_Contract_Value',
-        'المنفذ فعلياً (نسبة الإنجاز)': 'Actual_Financial_Value', 'القيمة المخطط لها': 'Target_Financial_Value',
+        'المنفذ فعلياً (نسبة الإنجاز)': 'Actual_Financial_Value', # هذا هو العمود المشتبه به
+        'القيمة المخطط لها': 'Target_Financial_Value',
         'الإنحراف عن التكلفة (CV)': 'Delayed_Financial_Value', 'مدة العقد': 'Contract_Duration',
         'عدد الايام المتبقية': 'Remaining_Days', 'التقييم العام للمقاول': 'Contractor_Overall_Score',
         'تاريخ بداية المشروع': 'Start_Date', 'تاريخ نهاية المشروع': 'End_Date', 
@@ -166,16 +166,33 @@ def load_and_process_data():
         'توريد وتمديد كوابل أرضية - شهري مستهدف': 'L_Cable_Monthly_Target', 'توريد وتمديد كوابل أرضية - شهري فعلي': 'L_Cable_Monthly_Actual',
     }
     
-    df.rename(columns=COLUMN_MAP, inplace=True)
+    # 3. إعادة التسمية بشكل آمن (فقط للأعمدة الموجودة)
+    rename_dict = {col_ar: col_en for col_ar, col_en in COLUMN_MAP.items() if col_ar in df.columns}
+    df.rename(columns=rename_dict, inplace=True)
     
     # ------------------ معالجة الأخطاء (القسم الجديد والمهم) ------------------
     
+    # التأكد من وجود جميع الأعمدة المالية والمؤشرات الرئيسية المطلوبة للعرض:
+    REQUIRED_COLS = [
+        'Actual_Financial_Value', 'Target_Financial_Value', 'Total_Contract_Value',
+        'Actual_Completion_Rate', 'Target_Completion_Rate', 'Actual_Deviation_Rate', 
+        'Contract_ID', 'Report_Date', 'Category'
+    ]
+    
+    # إضافة الأعمدة المفقودة بقيم صفرية أو افتراضية لمنع الـ KeyError
+    for col in REQUIRED_COLS:
+        if col not in df.columns:
+            # إذا كان العمود مفقوداً، يتم إنشاؤه بقيمة 0 أو 'غير محدد'
+            if 'Rate' in col or 'Value' in col:
+                 df[col] = 0.0
+            elif col == 'Category':
+                 df[col] = 'غير محدد'
+            else:
+                 df[col] = pd.NaT # للتواريخ
+
+    
     # 1. ملء القيم المفقودة في عمود التصنيف لعدم كسر الفلتر
-    if 'Category' in df.columns:
-        df['Category'].fillna('غير محدد', inplace=True)
-    else:
-        # إذا كان العمود غير موجود، نقوم بإنشائه لمنع خطأ لاحق
-        df['Category'] = 'غير محدد'
+    df['Category'].fillna('غير محدد', inplace=True)
         
     # 2. تحويل التواريخ
     date_cols = ['Report_Date', 'Start_Date', 'End_Date']
@@ -191,7 +208,7 @@ def load_and_process_data():
     ]
     for col in rate_cols_to_process:
          if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce') / 100
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0) / 100 # التعامل مع NaN قبل القسمة
 
     # 4. تنظيف وتحويل القيم المالية والـ Scores
     financial_cols = ['Total_Contract_Value', 'Actual_Financial_Value', 'Target_Financial_Value', 'Delayed_Financial_Value']
@@ -199,7 +216,6 @@ def load_and_process_data():
     
     for col in financial_cols + score_cols:
         if col in df.columns:
-            # استخدام .fillna(0) هنا يمنع الانهيار إذا كانت القيم مفقودة
             df[col] = df[col].astype(str).str.replace(',', '', regex=False).apply(pd.to_numeric, errors='coerce').fillna(0)
     
     # ------------------ الحسابات المتقدمة ------------------
@@ -209,17 +225,14 @@ def load_and_process_data():
         elif rate <= -0.05: return 'متأخر'
         else: return 'مطابق'
     
-    # التأكد من وجود الأعمدة قبل الحساب
-    if 'Actual_Deviation_Rate' in df.columns:
-        df['Project_Deviation_Status'] = df['Actual_Deviation_Rate'].apply(get_deviation_status)
-    else:
-        df['Project_Deviation_Status'] = 'غير معلوم' # قيمة افتراضية في حال عدم وجود العمود
+    # حساب الحالة بناءً على الانحراف (تم التأكد من وجود عمود Actual_Deviation_Rate أعلاه)
+    df['Project_Deviation_Status'] = df['Actual_Deviation_Rate'].apply(get_deviation_status)
         
-    # التأكد من وجود Contract_ID و Report_Date قبل التجميع
-    if 'Contract_ID' in df.columns and 'Report_Date' in df.columns:
+    # استخلاص آخر تقرير لكل عقد
+    if not df['Report_Date'].empty and 'Contract_ID' in df.columns:
         latest_reports = df.loc[df.groupby('Contract_ID')['Report_Date'].idxmax()]
     else:
-        latest_reports = df.copy() # استخدم كل البيانات إذا كانت الأعمدة الرئيسية مفقودة
+        latest_reports = df.copy() 
 
     return df, latest_reports
 
@@ -240,7 +253,6 @@ def filter_sidebar(df):
     st.sidebar.header("خيارات الفلترة")
 
     # قائمة الفلاتر المطلوبة
-    # التأكد من أن الأعمدة موجودة قبل محاولة استخدامها
     axis_options = df['Axis'].dropna().unique() if 'Axis' in df.columns else []
     supervisor_options = df['Supervisor_Engineer'].dropna().unique() if 'Supervisor_Engineer' in df.columns else []
     category_options = df['Category'].dropna().unique() if 'Category' in df.columns else []
@@ -252,10 +264,6 @@ def filter_sidebar(df):
     selected_contract = st.sidebar.multiselect("رقم العقد:", options=contract_options)
     
     status_options = ['متقدم', 'متأخر', 'مطابق', 'غير معلوم']
-    # التأكد من أن عمود الحالة موجود
-    if 'Project_Deviation_Status' not in df.columns:
-        df['Project_Deviation_Status'] = 'غير معلوم' 
-        
     selected_status = st.sidebar.multiselect("حالة المشروع:", options=status_options)
     
     # فلتر التاريخ
@@ -270,7 +278,6 @@ def filter_sidebar(df):
         start_date = pd.to_datetime(date_range[0])
         end_date = pd.to_datetime(date_range[1])
     else:
-        # قيم افتراضية إذا كان عمود التاريخ مفقودًا أو فارغًا
         start_date = pd.Timestamp.min
         end_date = pd.Timestamp.max
 
@@ -314,7 +321,7 @@ if page == "executive_summary":
     if 'Contract_ID' in filtered_df.columns and 'Report_Date' in filtered_df.columns:
         filtered_latest_df = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
     else:
-        filtered_latest_df = filtered_df.copy() # في حال عدم وجود الأعمدة
+        filtered_latest_df = filtered_df.copy() 
 
     # 1. حساب المؤشرات المطلوبة
     total_projects = filtered_latest_df['Contract_ID'].nunique() if 'Contract_ID' in filtered_latest_df.columns else 0
@@ -407,7 +414,6 @@ elif page == "detailed_analysis":
     filtered_df = filter_sidebar(df)
     
     # 1. تحديد التصنيف المختار من الفلاتر
-    # استخدام .dropna().unique() لضمان عدم وجود قيم NaN تسبب مشاكل
     selected_categories = filtered_df['Category'].dropna().unique()
     
     # تحديد المؤشرات التي سيتم عرضها بناءً على التصنيف
@@ -514,7 +520,7 @@ elif page == "detailed_analysis":
         
         latest_per_contract = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
         
-        # القائمة المرجعية للأسماء العربية
+        # القائمة المرجعية للأسماء العربية (يتم إنشاؤها بعد إعادة التسمية)
         REVERSE_COLUMN_MAP = {v: k for k, v in COLUMN_MAP.items()}
 
         for metric in target_metrics:
