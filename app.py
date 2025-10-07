@@ -8,51 +8,116 @@ from pyairtable import Table
 # 1. إعدادات الصفحة والتصميم (CSS Customization)
 # ----------------------------------------------
 
-# الألوان للهوية البصرية (يمكنك تعديلها لاحقاً)
-PRIMARY_COLOR = "#004d99"  
-SUCCESS_COLOR = "#28a745"  
-WARNING_COLOR = "#dc3545"  
-ACCENT_COLOR = "#007bff"   
+# الألوان للهوية البصرية (تم تثبيتها لألوان Streamlit القياسية مع تباين جيد)
+PRIMARY_COLOR = "#004d99"  # أزرق داكن (للعناوين والحدود)
+SUCCESS_COLOR = "#28a745"  # أخضر (للأداء الإيجابي)
+WARNING_COLOR = "#dc3545"  # أحمر (للأداء السلبي/المتأخر)
+ACCENT_COLOR = "#007bff"   # أزرق فاتح (للقيم الرئيسية)
+BACKGROUND_COLOR = "#f0f2f6" # خلفية فاتحة موحدة
 
-st.set_page_config(layout="wide", page_title="نظام متابعة أداء عقود التشغيل والصيانة")
+st.set_page_config(layout="wide", page_title="نظام متابعة أداء عقود التشغيل والصيانة", initial_sidebar_state="expanded")
 
 # تطبيق CSS مخصص ليتوافق مع التصميم المطلوب
+# تم تحسين الأنماط لتطبيق تأثير بطاقات (Cards) أفضل واستخدام خط 'Tajawal'
 st.markdown(f"""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
-    html, body, [class*="st-"] {{ font-family: 'Tajawal', sans-serif; }}
-    .stApp {{ background-color: #f8f9fa; }}
-
-    /* تصميم بطاقات KPI لتكون بارزة */
-    div.st-emotion-cache-k7vsyb, div.st-emotion-cache-1r6r8u, div[data-testid*="stMetric"] {{ 
-        background-color: #ffffff;
-        border-radius: 10px;
-        padding: 15px 20px;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        border-left: 5px solid {ACCENT_COLOR}; 
-        margin-bottom: 15px;
+    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
+    
+    html, body, [class*="st-"] {{ 
+        font-family: 'Tajawal', sans-serif; 
+        direction: rtl; /* لضمان الدعم الكامل للغة العربية */
+        text-align: right;
+    }}
+    .stApp {{ background-color: {BACKGROUND_COLOR}; }}
+    
+    /* إعدادات الشريط الجانبي */
+    .st-emotion-cache-1cypcdb {{ /* Streamlit sidebar header */
+        color: {PRIMARY_COLOR};
     }}
     
-    .css-1f2wzrg {{ color: {PRIMARY_COLOR}; }} 
-    [data-testid="stMetricValue"] {{ color: {ACCENT_COLOR}; font-size: 2.5em; }}
-    .css-1b4z8g7, .css-1b4z8g7 div:first-child {{ color: {WARNING_COLOR} !important; }} 
+    /* تصميم بطاقات KPI بشكل بارز ومحدّث */
+    div.st-emotion-cache-k7vsyb, div.st-emotion-cache-1r6r8u, div[data-testid*="stMetric"] {{ 
+        background-color: #ffffff;
+        border-radius: 12px; /* زوايا مستديرة أكثر */
+        padding: 20px; /* مساحة داخلية أكبر */
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1); /* ظل أفضل */
+        border-right: 5px solid {PRIMARY_COLOR}; /* شريط جانبي بلون رئيسي */
+        margin-bottom: 20px;
+        min-height: 100px; /* لضمان اتساق ارتفاع البطاقات */
+    }}
     
+    /* قيم المؤشرات الرئيسية */
+    [data-testid="stMetricValue"] {{ 
+        color: {ACCENT_COLOR}; 
+        font-size: 2.2em; 
+        font-weight: 700;
+        text-align: right;
+    }}
+    
+    /* تسمية المؤشرات */
+    [data-testid="stMetricLabel"] {{ 
+        color: #6c757d; 
+        font-size: 1em; 
+        font-weight: 400;
+        text-align: right;
+    }}
+    
+    /* الانحراف (Delta) */
+    .css-1b4z8g7 div:first-child {{ 
+        color: {WARNING_COLOR} !important; /* لون الانحراف السلبي */
+    }} 
+    .css-1f2wzrg div:first-child {{ 
+        color: {SUCCESS_COLOR} !important; /* لون الانحراف الإيجابي */
+    }}
+
     /* تصميم البطاقة المجمعة (لتقييم المقاول) */
     .combined-card {{
         background-color: #ffffff;
-        border-radius: 10px;
-        padding: 15px 20px;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        border-left: 5px solid {PRIMARY_COLOR};
-        margin-bottom: 15px;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+        border-right: 5px solid {PRIMARY_COLOR};
+        margin-bottom: 20px;
         height: 100%;
     }}
     .combined-card h4 {{
         color: {PRIMARY_COLOR};
+        font-weight: 700;
         border-bottom: 2px solid #eee;
-        padding-bottom: 5px;
+        padding-bottom: 10px;
         margin-top: 0;
+        margin-bottom: 15px;
     }}
+    
+    /* تعديل تصميم أزرار الراديو (للتنقل) */
+    .st-emotion-cache-1r4y5p7 {{
+        padding: 10px 0;
+        border-radius: 8px;
+        background-color: #ffffff;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }}
+    .st-emotion-cache-1r4y5p7 label {{
+        padding: 8px 15px;
+        font-weight: 700;
+        color: {PRIMARY_COLOR};
+    }}
+    
+    /* نمط التحذير (لرسالة "يرجى اختيار تصنيف") */
+    div[data-testid="stAlert"] {{
+        border-right: 10px solid #ffc107;
+        border-left: none;
+    }}
+    
+    /* عناوين الصفحات */
+    h1 {{ 
+        color: {PRIMARY_COLOR}; 
+        font-weight: 900;
+        text-align: right;
+        border-bottom: 3px solid {ACCENT_COLOR};
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+    }}
+    
     </style>
     """, unsafe_allow_html=True)
 
@@ -162,17 +227,26 @@ REVERSE_COLUMN_MAP = {v: k for k, v in COLUMN_MAP.items()}
 
 # قراءة مفاتيح Airtable من Streamlit Secrets
 try:
+    # سيتم تشغيل هذا الكود فقط في البيئة التي تحتوي على Secrets
+    # في حال لم تكن متاحة، سيتم التعامل معها كـ DataFrame فارغة
     AIRTABLE_API_KEY = st.secrets["airtable"]["api_key"]
     AIRTABLE_BASE_ID = st.secrets["airtable"]["base_id"]
     AIRTABLE_TABLE_NAME = st.secrets["airtable"]["table_name"]
 except KeyError:
-    st.error("خطأ: يرجى التأكد من إعداد مفاتيح Airtable (api_key, base_id, table_name) في Streamlit Secrets.")
-    st.stop()
+    # وضع قيم وهمية لتمكين التشغيل إذا لم تتوفر مفاتيح Secrets
+    AIRTABLE_API_KEY = "DUMMY_KEY"
+    AIRTABLE_BASE_ID = "DUMMY_BASE"
+    AIRTABLE_TABLE_NAME = "DUMMY_TABLE"
+    st.error("خطأ: لم يتم العثور على مفاتيح Airtable (api_key, base_id, table_name) في Streamlit Secrets. سيتم عرض بيانات وهمية أو فارغة.")
 
 
 @st.cache_data(ttl=600) # تخزين مؤقت للبيانات لمدة 10 دقائق
 def load_and_process_data():
     try:
+        if AIRTABLE_API_KEY == "DUMMY_KEY":
+            # في بيئة التطوير/الاختبار حيث لا تتوفر Secrets، نرجع DataFrame فارغة لتجنب الانهيار
+            return pd.DataFrame(), pd.DataFrame() 
+            
         # 1. الاتصال بـ Airtable وجلب البيانات
         table = Table(AIRTABLE_API_KEY, AIRTABLE_BASE_ID, AIRTABLE_TABLE_NAME)
         records = table.all()
@@ -202,7 +276,8 @@ def load_and_process_data():
         'Delayed_Financial_Value', 
         'Actual_Completion_Rate', 'Target_Completion_Rate', 'Actual_Deviation_Rate', 
         'Contract_ID', 'Report_Date', 'Category', 'Contract_Duration', 'Elapsed_Time_Rate',
-        'Contractor_Overall_Score', 'HSE_Score', 'Communication_Score', 'Target_Achievement_Score', 'Quality_Score'
+        'Contractor_Overall_Score', 'HSE_Score', 'Communication_Score', 'Target_Achievement_Score', 'Quality_Score',
+        'Axis', 'Supervisor_Engineer', 'Contractor'
     ]
     
     # إضافة الأعمدة المفقودة بقيم صفرية أو افتراضية لمنع الـ KeyError
@@ -215,7 +290,7 @@ def load_and_process_data():
             elif 'Date' in col:
                  df[col] = pd.NaT 
             else:
-                 df[col] = 0 
+                 df[col] = 'غير معلوم' if col in ['Axis', 'Supervisor_Engineer', 'Contractor'] else 0
     
     # ملء القيم المفقودة في عمود التصنيف لعدم كسر الفلتر
     df['Category'].fillna('غير محدد', inplace=True)
@@ -252,20 +327,22 @@ def load_and_process_data():
     df['Project_Deviation_Status'] = df['Actual_Deviation_Rate'].apply(get_deviation_status)
         
     # استخلاص آخر تقرير لكل عقد
-    latest_reports = pd.DataFrame() # تعريفها في النطاق الخارجي للدالة
-    if not df['Report_Date'].empty and 'Contract_ID' in df.columns:
+    latest_reports = pd.DataFrame() 
+    if not df.empty and 'Report_Date' in df.columns and 'Contract_ID' in df.columns:
         latest_reports = df.loc[df.groupby('Contract_ID')['Report_Date'].idxmax()]
     else:
         latest_reports = df.copy() 
 
-    # --- التصحيح هنا: تغيير latest_reports_df إلى latest_reports ---
+    # التأكد من عدم إرجاع قيم NaN بدلاً من DataFrame فارغة في حالة الفشل
     return df, latest_reports
 
 # استدعاء الدالة
 df, latest_reports_df = load_and_process_data()
 
 if df.empty:
-    st.info("لا توجد بيانات للعرض. يرجى مراجعة إعدادات Airtable في ملف Secrets أو التحقق من صلاحيات المفتاح.")
+    st.info("لا توجد بيانات للعرض. يرجى التأكد من إعداد Airtable Secrets بشكل صحيح.")
+    if AIRTABLE_API_KEY == "DUMMY_KEY":
+        st.markdown("**ملاحظة:** يرجى التأكد من توفير مفاتيح Airtable في Streamlit Secrets للتحميل الفعلي للبيانات.")
     st.stop()
 
 
@@ -275,19 +352,21 @@ if df.empty:
 
 # تم تعديل هذه الدالة لإرجاع قائمة التصنيفات التي اختارها المستخدم أيضاً
 def filter_sidebar(df):
-    st.sidebar.header("خيارات الفلترة")
+    st.sidebar.header("تصفية البيانات")
 
     # قائمة الفلاتر المطلوبة
-    axis_options = df['Axis'].dropna().unique() if 'Axis' in df.columns else []
-    supervisor_options = df['Supervisor_Engineer'].dropna().unique() if 'Supervisor_Engineer' in df.columns else []
+    # استخدام خيار "الكل" كخيار افتراضي لتحسين UX
+    axis_options = ['الكل'] + df['Axis'].dropna().unique().tolist() if 'Axis' in df.columns else []
+    supervisor_options = ['الكل'] + df['Supervisor_Engineer'].dropna().unique().tolist() if 'Supervisor_Engineer' in df.columns else []
+    # هنا لا نستخدم 'الكل' لفرض اختيار واحد أو لا شيء في صفحة التحليل التفصيلي
     category_options = df[df['Category'] != 'غير محدد']['Category'].dropna().unique().tolist() if 'Category' in df.columns else []
-    contract_options = df['Contract_ID'].dropna().unique() if 'Contract_ID' in df.columns else []
+    contract_options = ['الكل'] + df['Contract_ID'].dropna().unique().tolist() if 'Contract_ID' in df.columns else []
     
-    selected_axis = st.sidebar.multiselect("المحور:", options=axis_options)
-    selected_supervisor = st.sidebar.multiselect("المهندس المشرف:", options=supervisor_options)
+    selected_axis = st.sidebar.multiselect("المحور:", options=axis_options, default='الكل')
+    selected_supervisor = st.sidebar.multiselect("المهندس المشرف:", options=supervisor_options, default='الكل')
     # الاحتفاظ بقائمة التصنيفات التي اختارها المستخدم
     selected_category = st.sidebar.multiselect("التصنيف:", options=category_options) 
-    selected_contract = st.sidebar.multiselect("رقم العقد:", options=contract_options)
+    selected_contract = st.sidebar.multiselect("رقم العقد:", options=contract_options, default='الكل')
     
     status_options = ['متقدم', 'متأخر', 'مطابق', 'غير معلوم']
     selected_status = st.sidebar.multiselect("حالة المشروع:", options=status_options)
@@ -295,26 +374,32 @@ def filter_sidebar(df):
     # فلتر التاريخ
     start_date = pd.Timestamp.min
     end_date = pd.Timestamp.max
+    date_range = None
     if 'Report_Date' in df.columns and pd.api.types.is_datetime64_any_dtype(df['Report_Date']) and not df['Report_Date'].empty:
-        min_date = df['Report_Date'].min().date()
-        max_date = df['Report_Date'].max().date()
-        date_range = st.sidebar.slider(
-            "تاريخ التقرير:",
-            min_value=min_date, max_value=max_date,
-            value=(min_date, max_date), format="YYYY/MM/DD"
-        )
-        start_date = pd.to_datetime(date_range[0])
-        end_date = pd.to_datetime(date_range[1])
+        min_date = df['Report_Date'].min().date() if not df['Report_Date'].min() is pd.NaT else pd.to_datetime('2020-01-01').date()
+        max_date = df['Report_Date'].max().date() if not df['Report_Date'].max() is pd.NaT else pd.to_datetime('2025-12-31').date()
+        
+        if min_date <= max_date:
+            date_range = st.sidebar.slider(
+                "تاريخ التقرير:",
+                min_value=min_date, max_value=max_date,
+                value=(min_date, max_date), format="YYYY/MM/DD"
+            )
+            start_date = pd.to_datetime(date_range[0])
+            end_date = pd.to_datetime(date_range[1])
 
     # تطبيق الفلاتر
     df_filtered = df.copy()
-    if selected_axis: df_filtered = df_filtered[df_filtered['Axis'].isin(selected_axis)]
-    if selected_supervisor: df_filtered = df_filtered[df_filtered['Supervisor_Engineer'].isin(selected_supervisor)]
+    
+    # تطبيق الفلاتر (تجاهل 'الكل' في الفلترة)
+    if selected_axis and 'الكل' not in selected_axis: df_filtered = df_filtered[df_filtered['Axis'].isin(selected_axis)]
+    if selected_supervisor and 'الكل' not in selected_supervisor: df_filtered = df_filtered[df_filtered['Supervisor_Engineer'].isin(selected_supervisor)]
     if selected_category: df_filtered = df_filtered[df_filtered['Category'].isin(selected_category)]
-    if selected_contract: df_filtered = df_filtered[df_filtered['Contract_ID'].isin(selected_contract)]
+    if selected_contract and 'الكل' not in selected_contract: df_filtered = df_filtered[df_filtered['Contract_ID'].isin(selected_contract)]
     if selected_status: df_filtered = df_filtered[df_filtered['Project_Deviation_Status'].isin(selected_status)]
     
-    df_filtered = df_filtered[(df_filtered['Report_Date'] >= start_date) & (df_filtered['Report_Date'] <= end_date)]
+    if date_range:
+        df_filtered = df_filtered[(df_filtered['Report_Date'] >= start_date) & (df_filtered['Report_Date'] <= end_date)]
     
     # إرجاع كل من DataFrame المفلتر وقائمة التصنيفات المختارة
     return df_filtered, selected_category
@@ -325,12 +410,12 @@ def filter_sidebar(df):
 
 PAGES = {
     "1. ملخص تنفيذي (KPIs)": "executive_summary",
-    "2. تحليل تفصيلي (المسار الزمني)": "detailed_analysis",
+    "2. تحليل تفصيلي (الأداء التخصصي)": "detailed_analysis",
     "3. عرض كامل التفاصيل": "raw_data_view"
 }
 
-st.sidebar.title("تنقل بين الصفحات")
-selection = st.sidebar.radio("اذهب إلى:", list(PAGES.keys()))
+st.sidebar.title("التنقل في لوحة التحكم")
+selection = st.sidebar.radio("اختر الصفحة:", list(PAGES.keys()))
 page = PAGES[selection]
 
 # ----------------------------------------------------
@@ -339,13 +424,12 @@ page = PAGES[selection]
 
 if page == "executive_summary":
     st.title("ملخص تنفيذي: المؤشرات الرئيسية")
-    st.markdown("---")
     
     # هنا لا نحتاج قائمة التصنيفات، نستقبل DataFrame فقط
     filtered_df, _ = filter_sidebar(df)
     
     # تجميع البيانات الأخيرة بعد الفلترة
-    if not filtered_df.empty:
+    if not filtered_df.empty and 'Report_Date' in filtered_df.columns:
         filtered_latest_df = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
     else:
         st.warning("لا توجد بيانات مطابقة لمعايير الفلترة الحالية.")
@@ -360,24 +444,24 @@ if page == "executive_summary":
     total_actual_value = filtered_latest_df['Actual_Financial_Value'].fillna(0).sum() / 1000000
     avg_overall_score = filtered_latest_df['Contractor_Overall_Score'].fillna(0).mean()
 
-    # 2. عرض المؤشرات في بطاقات مترابطة (4 صفوف رئيسية)
+    # 2. عرض المؤشرات في بطاقات (KPI Cards)
     
     # --- الصف الأول: بطاقة الوقت والمشاريع ---
-    st.subheader("إجمالي الوضع العام والمشاريع")
+    st.subheader("إجمالي الوضع العام والمشاريع", anchor=False)
     col1, col2, col3, col4 = st.columns(4)
     
-    col1.metric("إجمالي عدد المشاريع (فريد)", f"{total_projects}")
-    col2.metric("متوسط مدة العقد (أيام)", f"{filtered_latest_df['Contract_Duration'].fillna(0).mean():.0f}")
-    col3.metric("متوسط المدة المنقضية %", f"{filtered_latest_df['Elapsed_Time_Rate'].fillna(0).mean() * 100:.1f}%")
+    col1.metric("إجمالي عدد المشاريع", f"{total_projects}")
+    col2.metric("متوسط المدة المنقضية", f"{filtered_latest_df['Elapsed_Time_Rate'].fillna(0).mean() * 100:.1f}%")
+    col3.metric("متوسط مدة العقد (أيام)", f"{filtered_latest_df['Contract_Duration'].fillna(0).mean():.0f}")
     
     status_counts = filtered_latest_df['Project_Deviation_Status'].value_counts()
     late_count = status_counts.get('متأخر', 0)
     col4.metric("المشاريع المتأخرة", f"{late_count}", delta_color='inverse', delta=f"من أصل {total_projects}")
 
-    st.markdown("---")
+    st.divider()
     
     # --- الصف الثاني: بطاقة نسب الإنجاز وحالة المشروع ---
-    st.subheader("ملخص الإنجاز")
+    st.subheader("ملخص الإنجاز والمسار الزمني", anchor=False)
     col5, col6, col7 = st.columns(3)
     
     col5.metric("متوسط الإنجاز المخطط", f"{avg_target_completion:.1f}%")
@@ -388,47 +472,104 @@ if page == "executive_summary":
     col7.metric("متوسط الانحراف الكلي", f"{avg_dev:.1f}%", 
                 delta_color='inverse', delta=f"{avg_dev:.1f}%")
     
-    st.markdown("---")
+    st.divider()
 
     # --- الصف الثالث: بطاقة القيمة المالية ---
-    st.subheader("ملخص القيمة المالية")
+    st.subheader("ملخص القيمة المالية (مليون ريال)", anchor=False)
     col8, col9, col10 = st.columns(3)
 
-    col8.metric("إجمالي القيمة المخططة (مليون)", f"{total_target_value:,.2f}M")
-    col9.metric("إجمالي القيمة الفعلية (مليون)", f"{total_actual_value:,.2f}M")
+    col8.metric("إجمالي القيمة المخططة", f"{total_target_value:,.2f}M")
+    col9.metric("إجمالي القيمة الفعلية", f"{total_actual_value:,.2f}M")
     deviation_val = total_actual_value - total_target_value
-    col10.metric("الانحراف المالي الكلي (مليون)", f"{deviation_val:,.2f}M", 
+    col10.metric("الانحراف المالي الكلي", f"{deviation_val:,.2f}M", 
                 delta=f"{deviation_val:,.2f}M", delta_color='inverse')
 
-    st.markdown("---")
+    st.divider()
 
-    # --- الصف الرابع: بطاقة تقييم المقاول المجمعة ---
-    st.subheader("تقييم الأداء والمقاول")
+    # --- الصف الرابع: بطاقة تقييم المقاول المجمعة مع مخطط بياني ---
+    st.subheader("تقييم الأداء والمقاول", anchor=False)
     col11, col12 = st.columns([1, 2])
     
+    # حساب متوسط درجات المقاول
+    score_cols = ['HSE_Score', 'Communication_Score', 'Target_Achievement_Score', 'Quality_Score']
+    avg_scores = filtered_df[score_cols].fillna(0).mean().reset_index()
+    avg_scores.columns = ['Metric', 'Score']
+    
+    # دالة لتحديد اسم المؤشر العربي
+    def get_arabic_metric_name(metric):
+        metric_map = {
+            'HSE_Score': 'السلامة والصحة المهنية',
+            'Communication_Score': 'التواصل والاستجابة',
+            'Target_Achievement_Score': 'تحقيق المستهدفات',
+            'Quality_Score': 'الجودة'
+        }
+        return metric_map.get(metric, metric)
+
+    avg_scores['Metric_AR'] = avg_scores['Metric'].apply(get_arabic_metric_name)
+
     with col11:
         st.metric("متوسط التقييم العام للمقاول", f"{avg_overall_score:.2f}")
+        
+        # إضافة مخطط بياني (Bar Chart) صغير لتقييم المقاول الفرعي
+        fig_scores = px.bar(
+            avg_scores, 
+            x='Score', y='Metric_AR', 
+            orientation='h',
+            title='متوسط درجات التقييم الفرعية',
+            color_discrete_sequence=[PRIMARY_COLOR],
+            text='Score'
+        )
+        # تخصيص المخطط ليناسب المساحة
+        fig_scores.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+        fig_scores.update_layout(
+            xaxis_title=None, yaxis_title=None, 
+            showlegend=False,
+            margin=dict(l=20, r=20, t=40, b=20),
+            plot_bgcolor='white',
+            yaxis={'autorange': "reversed"},
+            font=dict(family='Tajawal', size=12) # تطبيق الخط العربي
+        )
+        st.plotly_chart(fig_scores, use_container_width=True)
+
 
     with col12:
-        st.markdown('<div class="combined-card">', unsafe_allow_html=True)
-        st.markdown('<h4>تفاصيل تقييم المقاول (المتوسط)</h4>', unsafe_allow_html=True)
+        # عرض المخطط الزمني للإنجاز الفعلي مقابل المخطط
+        st.subheader("تتبع أداء الإنجاز الزمني", anchor=False)
         
-        # عرض المؤشرات الفرعية داخل البطاقة المجمعة
-        score_cols = ['HSE_Score', 'Communication_Score', 'Target_Achievement_Score', 'Quality_Score']
-        avg_scores = filtered_df[score_cols].fillna(0).mean()
-        
-        # تصميم عرض القيم داخل البطاقة
-        col_s1, col_s2 = st.columns(2)
-        
-        col_s1.markdown(f"**السلامة والصحة المهنية:** {avg_scores['HSE_Score']:.2f}")
-        col_s1.markdown(f"**التواصل والاستجابة:** {avg_scores['Communication_Score']:.2f}")
-
-        col_s2.markdown(f"**تحقيق المستهدفات:** {avg_scores['Target_Achievement_Score']:.2f}")
-        col_s2.markdown(f"**الجودة:** {avg_scores['Quality_Score']:.2f}")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+        # تجميع البيانات شهرياً (المتوسط)
+        if 'Report_Date' in filtered_df.columns:
+            monthly_data = filtered_df.groupby(filtered_df['Report_Date'].dt.to_period('M'))[[
+                'Actual_Completion_Rate', 'Target_Completion_Rate'
+            ]].mean().reset_index()
+            
+            monthly_data['Report_Date'] = monthly_data['Report_Date'].dt.to_timestamp()
+            monthly_data['Actual_Completion_Rate'] = monthly_data['Actual_Completion_Rate'] * 100
+            monthly_data['Target_Completion_Rate'] = monthly_data['Target_Completion_Rate'] * 100
+            
+            fig_completion = px.line(
+                monthly_data, x='Report_Date', y=['Actual_Completion_Rate', 'Target_Completion_Rate'], 
+                title='الإنجاز الفعلي مقابل المخطط (شهري)',
+                labels={
+                    'value': 'النسبة المئوية', 
+                    'Report_Date': 'تاريخ التقرير', 
+                    'variable': 'النوع',
+                    'Actual_Completion_Rate': 'الفعلي',
+                    'Target_Completion_Rate': 'المخطط'
+                },
+                color_discrete_map={
+                    'Actual_Completion_Rate': SUCCESS_COLOR, 
+                    'Target_Completion_Rate': ACCENT_COLOR
+                }
+            )
+            
+            fig_completion.update_layout(
+                legend_title_text='مؤشر الإنجاز',
+                font=dict(family='Tajawal', size=12)
+            )
+            
+            st.plotly_chart(fig_completion, use_container_width=True)
     
-    st.markdown("---")
+    st.divider()
 
 # ----------------------------------------------------
 # -------------------- صفحة التحليل التفصيلي (التخصصي) --------------------
@@ -436,32 +577,25 @@ if page == "executive_summary":
 
 elif page == "detailed_analysis":
     st.title("تحليل تفصيلي: تتبع الأداء التخصصي")
-    st.markdown("---")
     
     # استقبال كل من DataFrame المفلتر وقائمة التصنيفات المختارة
     filtered_df, selected_category_list = filter_sidebar(df)
     
     # 1. تحديد التصنيف المختار الصالح (من قائمة اختيار المستخدم)
-    # نحتفظ فقط بالتصنيفات التي اختارها المستخدم والتي يمكن تطبيق التحليل التخصصي عليها
     valid_selected_categories = [cat for cat in selected_category_list if cat in ['انارة', 'طرق']]
     
     # 2. تطبيق المنطق الشرطي للعرض
-    
     if len(valid_selected_categories) == 0:
-        # إذا كانت قائمة اختيارات المستخدم الصالحة فارغة
         if filtered_df.empty:
             st.warning("لا توجد بيانات للعقود في الإطار الزمني أو الفلاتر المحددة. يرجى تعديل خيارات الفلترة.")
         else:
-            # هنا يتم عرض التحذير إذا لم يختر المستخدم تصنيفاً صالحاً أو اختار 'غير محدد'
-            st.warning("يرجى اختيار **تصنيف واحد (إنارة أو طرق)** من القائمة الجانبية لعرض المؤشرات التخصصية.")
+            st.warning("**يرجى اختيار تصنيف واحد (إنارة أو طرق)** من القائمة الجانبية لعرض المؤشرات التخصصية.")
         st.stop()
         
     elif len(valid_selected_categories) > 1:
-        # الحالة الثالثة: تم اختيار أكثر من تصنيف صالح
-        st.warning("تم اختيار أكثر من تصنيف صالح (إنارة/طرق) في الفلتر. يرجى اختيار **تصنيف واحد فقط** لتفعيل التحليل التخصصي.")
+        st.warning("تم اختيار أكثر من تصنيف صالح. يرجى اختيار **تصنيف واحد فقط** لتفعيل التحليل التخصصي.")
         st.stop()
 
-    # الآن، يجب أن يكون لدينا تصنيف صالح واحد فقط (len(valid_selected_categories) == 1)
     current_category = valid_selected_categories[0]
         
     # تحقق إضافي إذا كانت البيانات فارغة بعد تطبيق كل الفلاتر
@@ -469,89 +603,90 @@ elif page == "detailed_analysis":
         st.warning(f"لا توجد بيانات للعقود المصنفة كـ **{current_category}** ضمن الفلاتر المطبقة (التاريخ، المحور، المهندس المشرف، الخ.). يرجى تعديل هذه الفلاتر.")
         st.stop()
 
-    # تحديد المؤشرات التي سيتم عرضها بناءً على التصنيف
+    st.info(f"عرض مؤشرات الأداء التخصصية لـ **{current_category}**")
+    st.divider()
+
+    # تحديد المؤشرات التي سيتم عرضها بناءً على التصنيف (تم اختصار القائمة لأغراض العرض)
     LIGHTING_METRICS = [
-        'L_Rep_Col_Target', 'L_Rep_Col_Actual', 'L_Rep_Col_Monthly_Target', 'L_Rep_Col_Monthly_Actual',
-        'L_Maint_Col_Target', 'L_Maint_Col_Actual', 'L_Maint_Col_Monthly_Target', 'L_Maint_Col_Monthly_Actual',
-        'L_Fuse_Target', 'L_Fuse_Actual', 'L_Fuse_Monthly_Target', 'L_Fuse_Monthly_Actual',
-        'L_Lantern_Target', 'L_Lantern_Actual', 'L_Lantern_Monthly_Target', 'L_Lantern_Monthly_Actual',
-        'L_Arm_Target', 'L_Arm_Actual', 'L_Arm_Monthly_Target', 'L_Arm_Monthly_Actual',
-        'L_Board_Target', 'L_Board_Actual', 'L_Board_Monthly_Target', 'L_Board_Monthly_Actual',
-        'L_Cable_Target', 'L_Cable_Actual', 'L_Cable_Monthly_Target', 'L_Cable_Monthly_Actual'
+        ('استبدال أعمدة (تراكمي)', 'L_Rep_Col_Actual', 'L_Rep_Col_Target'),
+        ('صيانة أعمدة (شهري)', 'L_Maint_Col_Monthly_Actual', 'L_Maint_Col_Monthly_Target'),
+        ('فوانيس الإنارة (تراكمي)', 'L_Lantern_Actual', 'L_Lantern_Target'),
+        ('لوحات التوزيع (شهري)', 'L_Board_Monthly_Actual', 'L_Board_Monthly_Target'),
     ]
     
     ROADS_METRICS = [
-        'FR_Cum_Target', 'FR_Cum_Actual', 'FR_Monthly_Target', 'FR_Monthly_Actual',
-        'Trans_Cum_Target', 'Trans_Cum_Actual', 'Trans_Monthly_Target', 'Trans_Monthly_Actual',
-        'Pave_Cum_Target', 'Pave_Cum_Actual', 'Pave_Monthly_Target', 'Pave_Monthly_Actual',
-        'Paint_Cum_Target', 'Paint_Cum_Actual', 'Paint_Monthly_Target', 'Paint_Monthly_Actual',
-        'Traffic_Cum_Target', 'Traffic_Cum_Actual', 'Traffic_Monthly_Target', 'Traffic_Monthly_Actual',
-        'Emergency_Cum_Target', 'Emergency_Cum_Actual', 'Emergency_Monthly_Target', 'Emergency_Monthly_Actual',
-        'Wash_Cum_Target', 'Wash_Cum_Actual', 'Wash_Monthly_Target', 'Wash_Monthly_Actual',
-        'Other_Cum_Target', 'Other_Cum_Actual', 'Other_Monthly_Target', 'Other_Monthly_Actual',
+        ('الفرقة الرئيسية (تراكمي)', 'FR_Cum_Actual', 'FR_Cum_Target'),
+        ('المعاملات (شهري)', 'Trans_Monthly_Actual', 'Trans_Monthly_Target'),
+        ('الأرصفة (تراكمي)', 'Pave_Cum_Actual', 'Pave_Cum_Target'),
+        ('السلامة المرورية (شهري)', 'Traffic_Monthly_Actual', 'Traffic_Monthly_Target'),
     ]
 
-    if current_category == 'انارة':
-        st.info("عرض المؤشرات التراكمية والشهرية الخاصة بـ **الإنارة**.")
-        target_metrics = [m for m in LIGHTING_METRICS if m in filtered_df.columns]
-        chart_title = "تتبع أداء أعمال الإنارة التراكمي (استبدال أعمدة)"
-        actual_col = 'L_Rep_Col_Actual'
-        target_col = 'L_Rep_Col_Target'
-            
-    elif current_category == 'طرق':
-        st.info("عرض المؤشرات التراكمية والشهرية الخاصة بـ **الطرق**.")
-        target_metrics = [m for m in ROADS_METRICS if m in filtered_df.columns]
-        chart_title = "تتبع أداء أعمال الطرق التراكمي (الفرقة الرئيسية)"
-        actual_col = 'FR_Cum_Actual'
-        target_col = 'FR_Cum_Target'
-        
-    # 3. عرض الرسوم البيانية التراكمية (المتوسط)
+    target_metrics_display = LIGHTING_METRICS if current_category == 'انارة' else ROADS_METRICS
     
-    # حساب المتوسط الشهري للتراكمي
-    if 'Report_Date' in filtered_df.columns and not filtered_df.empty:
-        if actual_col in filtered_df.columns and target_col in filtered_df.columns:
-            monthly_data = filtered_df.groupby(filtered_df['Report_Date'].dt.to_period('M'))[[
-                actual_col, target_col
-            ]].mean().reset_index()
-                
-            monthly_data['Report_Date'] = monthly_data['Report_Date'].dt.to_timestamp()
-                
-            fig_cum = px.line(
-                monthly_data, x='Report_Date', y=[actual_col, target_col], 
-                title=chart_title,
-                labels={'value': 'النسبة التراكمية', 'Report_Date': 'التاريخ', 'variable': 'النوع'},
-                color_discrete_map={actual_col: SUCCESS_COLOR, target_col: ACCENT_COLOR}
-            )
-            st.plotly_chart(fig_cum, use_container_width=True)
-        else:
-            st.warning("لا يمكن عرض المخطط الزمني: أعمدة المؤشر الرئيسي مفقودة.")
+    # 3. عرض الرسوم البيانية التراكمية الرئيسية
+    main_metric_name, actual_col, target_col = target_metrics_display[0]
+    
+    st.subheader(f"تتبع الأداء التراكمي: {main_metric_name}", anchor=False)
+    
+    if 'Report_Date' in filtered_df.columns and actual_col in filtered_df.columns:
+        # حساب المتوسط الشهري للتراكمي
+        monthly_data = filtered_df.groupby(filtered_df['Report_Date'].dt.to_period('M'))[[
+            actual_col, target_col
+        ]].mean().reset_index()
+            
+        monthly_data['Report_Date'] = monthly_data['Report_Date'].dt.to_timestamp()
+        
+        # تحويل النسب لعرضها بـ 100%
+        monthly_data[actual_col] = monthly_data[actual_col] * 100
+        monthly_data[target_col] = monthly_data[target_col] * 100
+            
+        fig_cum = px.line(
+            monthly_data, x='Report_Date', y=[actual_col, target_col], 
+            title=f"أداء {main_metric_name} المخطط مقابل الفعلي",
+            labels={
+                'value': 'النسبة المئوية', 
+                'Report_Date': 'التاريخ', 
+                'variable': 'النوع',
+                actual_col: 'الفعلي',
+                target_col: 'المستهدف'
+            },
+            color_discrete_map={actual_col: SUCCESS_COLOR, target_col: ACCENT_COLOR}
+        )
+        fig_cum.update_layout(font=dict(family='Tajawal', size=12))
+        st.plotly_chart(fig_cum, use_container_width=True)
     else:
-        st.warning("لا يمكن عرض المخطط الزمني بسبب عدم وجود عمود 'Report_Date' أو البيانات فارغة.")
+        st.warning(f"بيانات الأداء التراكمي لـ {main_metric_name} غير متوفرة بشكل كافٍ أو مفقودة في الأعمدة.")
+    
 
-
-    st.markdown("---")
+    st.divider()
         
     # 4. عرض جميع المؤشرات التخصصية في بطاقات
-    st.subheader(f"جميع مؤشرات الأداء التخصصية لـ **{current_category}** (المتوسط)")
+    st.subheader(f"ملخص جميع مؤشرات {current_category} (المتوسط التراكمي/الشهري)", anchor=False)
         
     cols = st.columns(4)
     col_index = 0
         
-    # استخدام البيانات المفلترة للوصول إلى آخر تقرير لكل عقد
+    # استخدام البيانات المفلترة للوصول إلى آخر تقرير لكل عقد (للحسابات التراكمية والنهائية)
     latest_per_contract = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
         
-    for metric in target_metrics:
-        avg_value = latest_per_contract[metric].fillna(0).mean()
+    # دمج جميع الأعمدة المطلوبة في قائمة واحدة للحسابات
+    all_metrics_to_calculate = [col for _, col, _ in target_metrics_display] + [col for _, _, col in target_metrics_display]
+    
+    for metric_ar_name, actual_metric, target_metric in target_metrics_display:
+        
+        # حساب متوسط القيمتين (الفعلي والمستهدف)
+        avg_actual_value = latest_per_contract[actual_metric].fillna(0).mean() * 100
+        avg_target_value = latest_per_contract[target_metric].fillna(0).mean() * 100
+        
+        # حساب الانحراف
+        deviation = avg_actual_value - avg_target_value
             
-        # استخدام المتغير العام REVERSE_COLUMN_MAP
-        arabic_name = REVERSE_COLUMN_MAP.get(metric, metric)
-            
-        if 'Rate' in metric or 'Cum' in metric or 'Monthly' in metric:
-            display_value = f"{avg_value * 100:.2f}%"
-        else:
-            display_value = f"{avg_value:,.2f}"
-            
-        cols[col_index % 4].metric(arabic_name, display_value)
+        cols[col_index % 4].metric(
+            metric_ar_name, 
+            f"{avg_actual_value:.2f}%",
+            delta=f"{deviation:.2f}%",
+            delta_color='normal' if deviation >= 0 else 'inverse'
+        )
         col_index += 1
 
 # ----------------------------------------------------
@@ -560,17 +695,17 @@ elif page == "detailed_analysis":
 
 elif page == "raw_data_view":
     st.title("عرض كامل التفاصيل (البيانات الخام)")
-    st.markdown("---")
     
     # هنا لا نحتاج قائمة التصنيفات، نستقبل DataFrame فقط
     filtered_df, _ = filter_sidebar(df)
     
-    st.subheader("جدول بيانات التقارير المفصل")
+    st.subheader("جدول بيانات التقارير المفصل", anchor=False)
     
     if filtered_df.empty:
          st.warning("لا توجد بيانات مطابقة لمعايير الفلترة الحالية.")
          st.stop()
     
+    # قائمة الأعمدة المراد عرضها في الجدول (تم تحسينها لتكون موجزة ومهمة)
     display_cols_brief = [
         'Contract_ID', 'Report_Date', 'Contractor', 'Supervisor_Engineer', 'Project_Name', 
         'Actual_Completion_Rate', 'Target_Completion_Rate', 'Actual_Deviation_Rate', 'Project_Deviation_Status',
