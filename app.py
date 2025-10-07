@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import numpy as np
-from pyairtable import Table # <--- NEW IMPORT
+from pyairtable import Table
 
 # ----------------------------------------------
 # 1. إعدادات الصفحة والتصميم (CSS Customization)
@@ -84,14 +84,14 @@ def load_and_process_data():
         df = pd.DataFrame(data)
 
     except Exception as e:
+        # يجب أن يكون هذا الجزء الآن للتعامل مع أخطاء الاتصال أو الصلاحيات
         st.error(f"حدث خطأ أثناء جلب البيانات من Airtable. (هل المفاتيح صحيحة؟): {e}")
-        # عرض البيانات المتوفرة في الكاش في حال الفشل
         return pd.DataFrame(), pd.DataFrame() 
 
-    # ------------------ بدء منطق المعالجة (نفس الكود السابق) ------------------
+    # ------------------ بدء منطق المعالجة ------------------
     
     # خطوة التنظيف
-    df.columns = df.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
+    df.columns = df.columns.str.replace(r'\s+', ' ', regex=False).str.strip()
     
     # القائمة الكاملة لإعادة التسمية 
     COLUMN_MAP = {
@@ -168,13 +168,22 @@ def load_and_process_data():
     
     df.rename(columns=COLUMN_MAP, inplace=True)
     
-    # ------------------ استكمال المعالجة (تحويل التواريخ والأرقام) ------------------
+    # ------------------ معالجة الأخطاء (القسم الجديد والمهم) ------------------
+    
+    # 1. ملء القيم المفقودة في عمود التصنيف لعدم كسر الفلتر
+    if 'Category' in df.columns:
+        df['Category'].fillna('غير محدد', inplace=True)
+    else:
+        # إذا كان العمود غير موجود، نقوم بإنشائه لمنع خطأ لاحق
+        df['Category'] = 'غير محدد'
+        
+    # 2. تحويل التواريخ
     date_cols = ['Report_Date', 'Start_Date', 'End_Date']
     for col in date_cols:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce')
     
-    # تحويل النسب المئوية (يشمل جميع المؤشرات التراكمية والشهرية)
+    # 3. تحويل النسب المئوية (يشمل جميع المؤشرات التراكمية والشهرية)
     rate_cols_to_process = [
         col for col in df.columns 
         if ('Rate' in col or 'Target' in col or 'Actual' in col or 'Cum' in col or 'Monthly' in col) 
@@ -184,23 +193,34 @@ def load_and_process_data():
          if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce') / 100
 
-    # تنظيف وتحويل القيم المالية والـ Scores
+    # 4. تنظيف وتحويل القيم المالية والـ Scores
     financial_cols = ['Total_Contract_Value', 'Actual_Financial_Value', 'Target_Financial_Value', 'Delayed_Financial_Value']
     score_cols = ['HSE_Score', 'Communication_Score', 'Target_Achievement_Score', 'Quality_Score', 'Contractor_Overall_Score']
     
     for col in financial_cols + score_cols:
         if col in df.columns:
-            df[col] = df[col].astype(str).str.replace(',', '', regex=False).apply(pd.to_numeric, errors='coerce')
+            # استخدام .fillna(0) هنا يمنع الانهيار إذا كانت القيم مفقودة
+            df[col] = df[col].astype(str).str.replace(',', '', regex=False).apply(pd.to_numeric, errors='coerce').fillna(0)
     
     # ------------------ الحسابات المتقدمة ------------------
     def get_deviation_status(rate):
+        if pd.isna(rate): return 'غير معلوم'
         if rate >= 0.05: return 'متقدم'
         elif rate <= -0.05: return 'متأخر'
         else: return 'مطابق'
     
-    df['Project_Deviation_Status'] = df['Actual_Deviation_Rate'].apply(get_deviation_status)
-    latest_reports = df.loc[df.groupby('Contract_ID')['Report_Date'].idxmax()]
-    
+    # التأكد من وجود الأعمدة قبل الحساب
+    if 'Actual_Deviation_Rate' in df.columns:
+        df['Project_Deviation_Status'] = df['Actual_Deviation_Rate'].apply(get_deviation_status)
+    else:
+        df['Project_Deviation_Status'] = 'غير معلوم' # قيمة افتراضية في حال عدم وجود العمود
+        
+    # التأكد من وجود Contract_ID و Report_Date قبل التجميع
+    if 'Contract_ID' in df.columns and 'Report_Date' in df.columns:
+        latest_reports = df.loc[df.groupby('Contract_ID')['Report_Date'].idxmax()]
+    else:
+        latest_reports = df.copy() # استخدم كل البيانات إذا كانت الأعمدة الرئيسية مفقودة
+
     return df, latest_reports
 
 # استدعاء الدالة بدون تمرير مسار الملف
@@ -208,7 +228,7 @@ df, latest_reports_df = load_and_process_data()
 
 # التأكد من وجود بيانات قبل متابعة العرض
 if df.empty:
-    st.info("لا توجد بيانات للعرض. يرجى مراجعة إعدادات Airtable في ملف Secrets.")
+    st.info("لا توجد بيانات للعرض. يرجى مراجعة إعدادات Airtable في ملف Secrets أو التحقق من صلاحيات المفتاح.")
     st.stop()
 
 
@@ -220,16 +240,26 @@ def filter_sidebar(df):
     st.sidebar.header("خيارات الفلترة")
 
     # قائمة الفلاتر المطلوبة
-    selected_axis = st.sidebar.multiselect("المحور:", options=df['Axis'].unique())
-    selected_supervisor = st.sidebar.multiselect("المهندس المشرف:", options=df['Supervisor_Engineer'].unique())
-    selected_category = st.sidebar.multiselect("التصنيف:", options=df['Category'].unique())
-    selected_contract = st.sidebar.multiselect("رقم العقد:", options=df['Contract_ID'].unique())
+    # التأكد من أن الأعمدة موجودة قبل محاولة استخدامها
+    axis_options = df['Axis'].dropna().unique() if 'Axis' in df.columns else []
+    supervisor_options = df['Supervisor_Engineer'].dropna().unique() if 'Supervisor_Engineer' in df.columns else []
+    category_options = df['Category'].dropna().unique() if 'Category' in df.columns else []
+    contract_options = df['Contract_ID'].dropna().unique() if 'Contract_ID' in df.columns else []
     
-    status_options = ['متقدم', 'متأخر', 'مطابق']
+    selected_axis = st.sidebar.multiselect("المحور:", options=axis_options)
+    selected_supervisor = st.sidebar.multiselect("المهندس المشرف:", options=supervisor_options)
+    selected_category = st.sidebar.multiselect("التصنيف:", options=category_options)
+    selected_contract = st.sidebar.multiselect("رقم العقد:", options=contract_options)
+    
+    status_options = ['متقدم', 'متأخر', 'مطابق', 'غير معلوم']
+    # التأكد من أن عمود الحالة موجود
+    if 'Project_Deviation_Status' not in df.columns:
+        df['Project_Deviation_Status'] = 'غير معلوم' 
+        
     selected_status = st.sidebar.multiselect("حالة المشروع:", options=status_options)
     
     # فلتر التاريخ
-    if not df['Report_Date'].empty and pd.api.types.is_datetime64_any_dtype(df['Report_Date']):
+    if 'Report_Date' in df.columns and pd.api.types.is_datetime64_any_dtype(df['Report_Date']) and not df['Report_Date'].empty:
         min_date = df['Report_Date'].min().date()
         max_date = df['Report_Date'].max().date()
         date_range = st.sidebar.slider(
@@ -240,8 +270,9 @@ def filter_sidebar(df):
         start_date = pd.to_datetime(date_range[0])
         end_date = pd.to_datetime(date_range[1])
     else:
-        start_date = df['Report_Date'].min()
-        end_date = df['Report_Date'].max()
+        # قيم افتراضية إذا كان عمود التاريخ مفقودًا أو فارغًا
+        start_date = pd.Timestamp.min
+        end_date = pd.Timestamp.max
 
     # تطبيق الفلاتر
     df_filtered = df.copy()
@@ -278,15 +309,22 @@ if page == "executive_summary":
     st.markdown("---")
     
     filtered_df = filter_sidebar(df)
-    filtered_latest_df = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
     
+    # تجميع البيانات الأخيرة بعد الفلترة
+    if 'Contract_ID' in filtered_df.columns and 'Report_Date' in filtered_df.columns:
+        filtered_latest_df = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
+    else:
+        filtered_latest_df = filtered_df.copy() # في حال عدم وجود الأعمدة
+
     # 1. حساب المؤشرات المطلوبة
-    total_projects = filtered_latest_df['Contract_ID'].nunique()
-    avg_actual_completion = filtered_latest_df['Actual_Completion_Rate'].mean() * 100
-    avg_target_completion = filtered_latest_df['Target_Completion_Rate'].mean() * 100
-    total_target_value = filtered_latest_df['Target_Financial_Value'].sum() / 1000000
-    total_actual_value = filtered_latest_df['Actual_Financial_Value'].sum() / 1000000
-    avg_overall_score = filtered_latest_df['Contractor_Overall_Score'].mean()
+    total_projects = filtered_latest_df['Contract_ID'].nunique() if 'Contract_ID' in filtered_latest_df.columns else 0
+    
+    # استخدام fillna(0) للتعامل مع NaN قبل الحساب
+    avg_actual_completion = filtered_latest_df['Actual_Completion_Rate'].fillna(0).mean() * 100
+    avg_target_completion = filtered_latest_df['Target_Completion_Rate'].fillna(0).mean() * 100
+    total_target_value = filtered_latest_df['Target_Financial_Value'].fillna(0).sum() / 1000000
+    total_actual_value = filtered_latest_df['Actual_Financial_Value'].fillna(0).sum() / 1000000
+    avg_overall_score = filtered_latest_df['Contractor_Overall_Score'].fillna(0).mean()
 
     # 2. عرض المؤشرات في بطاقات مترابطة (4 صفوف رئيسية)
     
@@ -295,8 +333,8 @@ if page == "executive_summary":
     col1, col2, col3, col4 = st.columns(4)
     
     col1.metric("إجمالي عدد المشاريع (فريد)", f"{total_projects}")
-    col2.metric("متوسط مدة العقد (أيام)", f"{filtered_latest_df['Contract_Duration'].mean():.0f}")
-    col3.metric("متوسط المدة المنقضية %", f"{filtered_latest_df['Elapsed_Time_Rate'].mean() * 100:.1f}%")
+    col2.metric("متوسط مدة العقد (أيام)", f"{filtered_latest_df['Contract_Duration'].fillna(0).mean():.0f}")
+    col3.metric("متوسط المدة المنقضية %", f"{filtered_latest_df['Elapsed_Time_Rate'].fillna(0).mean() * 100:.1f}%")
     
     status_counts = filtered_latest_df['Project_Deviation_Status'].value_counts()
     late_count = status_counts.get('متأخر', 0)
@@ -311,8 +349,10 @@ if page == "executive_summary":
     col5.metric("متوسط الإنجاز المخطط", f"{avg_target_completion:.1f}%")
     col6.metric("متوسط الإنجاز الفعلي", f"{avg_actual_completion:.1f}%", 
                 delta=f"{avg_actual_completion - avg_target_completion:.1f}%")
-    col7.metric("متوسط الانحراف الكلي", f"{filtered_latest_df['Actual_Deviation_Rate'].mean() * 100:.1f}%", 
-                delta_color='inverse', delta=f"{filtered_latest_df['Actual_Deviation_Rate'].mean() * 100:.1f}%")
+    
+    avg_dev = filtered_latest_df['Actual_Deviation_Rate'].fillna(0).mean() * 100
+    col7.metric("متوسط الانحراف الكلي", f"{avg_dev:.1f}%", 
+                delta_color='inverse', delta=f"{avg_dev:.1f}%")
     
     st.markdown("---")
 
@@ -341,7 +381,7 @@ if page == "executive_summary":
         
         # عرض المؤشرات الفرعية داخل البطاقة المجمعة
         score_cols = ['HSE_Score', 'Communication_Score', 'Target_Achievement_Score', 'Quality_Score']
-        avg_scores = filtered_df[score_cols].mean()
+        avg_scores = filtered_df[score_cols].fillna(0).mean()
         
         # تصميم عرض القيم داخل البطاقة
         col_s1, col_s2 = st.columns(2)
@@ -367,7 +407,8 @@ elif page == "detailed_analysis":
     filtered_df = filter_sidebar(df)
     
     # 1. تحديد التصنيف المختار من الفلاتر
-    selected_categories = filtered_df['Category'].unique()
+    # استخدام .dropna().unique() لضمان عدم وجود قيم NaN تسبب مشاكل
+    selected_categories = filtered_df['Category'].dropna().unique()
     
     # تحديد المؤشرات التي سيتم عرضها بناءً على التصنيف
     
@@ -416,7 +457,8 @@ elif page == "detailed_analysis":
     
     # 2. تطبيق المنطق الشرطي للعرض
     
-    if not selected_categories:
+    # التعديل هنا: نتحقق من عدد العناصر في المصفوفة
+    if len(selected_categories) == 0:
         st.warning("يرجى اختيار **تصنيف واحد (إنارة أو طرق)** من القائمة الجانبية لعرض المؤشرات التخصصية.")
         st.stop()
         
@@ -438,25 +480,29 @@ elif page == "detailed_analysis":
             target_col = 'FR_Cum_Target'
 
         else:
-            st.warning("التصنيف المختار غير معروف لتطبيق المؤشرات التخصصية.")
+            st.warning("التصنيف المختار غير معروف لتطبيق المؤشرات التخصصية. (قد يكون 'غير محدد')")
             st.stop()
             
         # 3. عرض الرسوم البيانية التراكمية (المتوسط)
         
         # حساب المتوسط الشهري للتراكمي
-        monthly_data = filtered_df.groupby(filtered_df['Report_Date'].dt.to_period('M'))[[
-            actual_col, target_col
-        ]].mean().reset_index()
-        
-        monthly_data['Report_Date'] = monthly_data['Report_Date'].dt.to_timestamp()
-        
-        fig_cum = px.line(
-            monthly_data, x='Report_Date', y=[actual_col, target_col], 
-            title=chart_title,
-            labels={'value': 'النسبة التراكمية', 'Report_Date': 'التاريخ', 'variable': 'النوع'},
-            color_discrete_map={actual_col: SUCCESS_COLOR, target_col: ACCENT_COLOR}
-        )
-        st.plotly_chart(fig_cum, use_container_width=True)
+        if 'Report_Date' in filtered_df.columns:
+            monthly_data = filtered_df.groupby(filtered_df['Report_Date'].dt.to_period('M'))[[
+                actual_col, target_col
+            ]].mean().reset_index()
+            
+            monthly_data['Report_Date'] = monthly_data['Report_Date'].dt.to_timestamp()
+            
+            fig_cum = px.line(
+                monthly_data, x='Report_Date', y=[actual_col, target_col], 
+                title=chart_title,
+                labels={'value': 'النسبة التراكمية', 'Report_Date': 'التاريخ', 'variable': 'النوع'},
+                color_discrete_map={actual_col: SUCCESS_COLOR, target_col: ACCENT_COLOR}
+            )
+            st.plotly_chart(fig_cum, use_container_width=True)
+        else:
+            st.warning("لا يمكن عرض المخطط الزمني بسبب عدم وجود عمود 'Report_Date'.")
+
 
         st.markdown("---")
         
@@ -468,13 +514,17 @@ elif page == "detailed_analysis":
         
         latest_per_contract = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
         
+        # القائمة المرجعية للأسماء العربية
+        REVERSE_COLUMN_MAP = {v: k for k, v in COLUMN_MAP.items()}
+
         for metric in target_metrics:
             if metric in latest_per_contract.columns:
                 
-                avg_value = latest_per_contract[metric].mean()
+                # استخدام fillna(0) للتعامل مع NaN
+                avg_value = latest_per_contract[metric].fillna(0).mean()
                 
-                # إيجاد الاسم العربي من القائمة المحددة
-                arabic_name = next((csv_name for csv_name, code_name in COLUMN_MAP.items() if code_name == metric), metric)
+                # إيجاد الاسم العربي 
+                arabic_name = REVERSE_COLUMN_MAP.get(metric, metric)
                 
                 if 'Rate' in metric or 'Cum' in metric or 'Monthly' in metric:
                      display_value = f"{avg_value * 100:.2f}%"
