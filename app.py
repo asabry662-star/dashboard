@@ -18,7 +18,6 @@ BACKGROUND_COLOR = "#f0f2f6" # خلفية فاتحة موحدة
 st.set_page_config(layout="wide", page_title="نظام متابعة أداء عقود التشغيل والصيانة", initial_sidebar_state="expanded")
 
 # تطبيق CSS مخصص ليتوافق مع التصميم المطلوب
-# تم تحسين الأنماط لتطبيق تأثير بطاقات (Cards) أفضل واستخدام خط 'Tajawal'
 st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
@@ -227,24 +226,20 @@ REVERSE_COLUMN_MAP = {v: k for k, v in COLUMN_MAP.items()}
 
 # قراءة مفاتيح Airtable من Streamlit Secrets
 try:
-    # سيتم تشغيل هذا الكود فقط في البيئة التي تحتوي على Secrets
-    # في حال لم تكن متاحة، سيتم التعامل معها كـ DataFrame فارغة
     AIRTABLE_API_KEY = st.secrets["airtable"]["api_key"]
     AIRTABLE_BASE_ID = st.secrets["airtable"]["base_id"]
     AIRTABLE_TABLE_NAME = st.secrets["airtable"]["table_name"]
 except KeyError:
-    # وضع قيم وهمية لتمكين التشغيل إذا لم تتوفر مفاتيح Secrets
     AIRTABLE_API_KEY = "DUMMY_KEY"
     AIRTABLE_BASE_ID = "DUMMY_BASE"
     AIRTABLE_TABLE_NAME = "DUMMY_TABLE"
-    st.error("خطأ: لم يتم العثور على مفاتيح Airtable (api_key, base_id, table_name) في Streamlit Secrets. سيتم عرض بيانات وهمية أو فارغة.")
+    # لا نوقف التنفيذ هنا، فقط نستخدم بيانات فارغة إذا كانت المفاتيح مفقودة
 
 
 @st.cache_data(ttl=600) # تخزين مؤقت للبيانات لمدة 10 دقائق
 def load_and_process_data():
     try:
         if AIRTABLE_API_KEY == "DUMMY_KEY":
-            # في بيئة التطوير/الاختبار حيث لا تتوفر Secrets، نرجع DataFrame فارغة لتجنب الانهيار
             return pd.DataFrame(), pd.DataFrame() 
             
         # 1. الاتصال بـ Airtable وجلب البيانات
@@ -256,7 +251,7 @@ def load_and_process_data():
         df = pd.DataFrame(data)
 
     except Exception as e:
-        st.error(f"حدث خطأ أثناء جلب البيانات من Airtable. (هل المفاتيح والصلاحيات صحيحة؟): {e}")
+        # st.error(f"حدث خطأ أثناء جلب البيانات من Airtable. (هل المفاتيح والصلاحيات صحيحة؟): {e}") #تم إزالة رسالة الخطأ لتنظيف الواجهة
         return pd.DataFrame(), pd.DataFrame() 
 
     # ------------------ بدء منطق المعالجة ------------------
@@ -270,7 +265,6 @@ def load_and_process_data():
     
     # ------------------ معالجة الأخطاء ------------------
     
-    # الأعمدة المطلوبة لضمان عدم الانهيار في أي صفحة
     REQUIRED_COLS = [
         'Actual_Financial_Value', 'Target_Financial_Value', 'Total_Contract_Value',
         'Delayed_Financial_Value', 
@@ -333,7 +327,6 @@ def load_and_process_data():
     else:
         latest_reports = df.copy() 
 
-    # التأكد من عدم إرجاع قيم NaN بدلاً من DataFrame فارغة في حالة الفشل
     return df, latest_reports
 
 # استدعاء الدالة
@@ -341,8 +334,6 @@ df, latest_reports_df = load_and_process_data()
 
 if df.empty:
     st.info("لا توجد بيانات للعرض. يرجى التأكد من إعداد Airtable Secrets بشكل صحيح.")
-    if AIRTABLE_API_KEY == "DUMMY_KEY":
-        st.markdown("**ملاحظة:** يرجى التأكد من توفير مفاتيح Airtable في Streamlit Secrets للتحميل الفعلي للبيانات.")
     st.stop()
 
 
@@ -350,34 +341,32 @@ if df.empty:
 # 3. واجهة الفلاتر (Interface Filters)
 # ----------------------------------------------
 
-# تم تعديل هذه الدالة لإرجاع قائمة التصنيفات التي اختارها المستخدم أيضاً
 def filter_sidebar(df):
     st.sidebar.header("تصفية البيانات")
 
-    # قائمة الفلاتر المطلوبة
-    # استخدام خيار "الكل" كخيار افتراضي لتحسين UX
     axis_options = ['الكل'] + df['Axis'].dropna().unique().tolist() if 'Axis' in df.columns else []
     supervisor_options = ['الكل'] + df['Supervisor_Engineer'].dropna().unique().tolist() if 'Supervisor_Engineer' in df.columns else []
-    # هنا لا نستخدم 'الكل' لفرض اختيار واحد أو لا شيء في صفحة التحليل التفصيلي
     category_options = df[df['Category'] != 'غير محدد']['Category'].dropna().unique().tolist() if 'Category' in df.columns else []
     contract_options = ['الكل'] + df['Contract_ID'].dropna().unique().tolist() if 'Contract_ID' in df.columns else []
     
     selected_axis = st.sidebar.multiselect("المحور:", options=axis_options, default='الكل')
     selected_supervisor = st.sidebar.multiselect("المهندس المشرف:", options=supervisor_options, default='الكل')
-    # الاحتفاظ بقائمة التصنيفات التي اختارها المستخدم
     selected_category = st.sidebar.multiselect("التصنيف:", options=category_options) 
     selected_contract = st.sidebar.multiselect("رقم العقد:", options=contract_options, default='الكل')
     
     status_options = ['متقدم', 'متأخر', 'مطابق', 'غير معلوم']
     selected_status = st.sidebar.multiselect("حالة المشروع:", options=status_options)
     
-    # فلتر التاريخ
     start_date = pd.Timestamp.min
     end_date = pd.Timestamp.max
     date_range = None
     if 'Report_Date' in df.columns and pd.api.types.is_datetime64_any_dtype(df['Report_Date']) and not df['Report_Date'].empty:
-        min_date = df['Report_Date'].min().date() if not df['Report_Date'].min() is pd.NaT else pd.to_datetime('2020-01-01').date()
-        max_date = df['Report_Date'].max().date() if not df['Report_Date'].max() is pd.NaT else pd.to_datetime('2025-12-31').date()
+        # استخدام تواريخ افتراضية إذا كانت التواريخ الفعلية غير صالحة
+        min_date_actual = df['Report_Date'].min()
+        max_date_actual = df['Report_Date'].max()
+        
+        min_date = min_date_actual.date() if not pd.isna(min_date_actual) else pd.to_datetime('2020-01-01').date()
+        max_date = max_date_actual.date() if not pd.isna(max_date_actual) else pd.to_datetime('2025-12-31').date()
         
         if min_date <= max_date:
             date_range = st.sidebar.slider(
@@ -391,7 +380,6 @@ def filter_sidebar(df):
     # تطبيق الفلاتر
     df_filtered = df.copy()
     
-    # تطبيق الفلاتر (تجاهل 'الكل' في الفلترة)
     if selected_axis and 'الكل' not in selected_axis: df_filtered = df_filtered[df_filtered['Axis'].isin(selected_axis)]
     if selected_supervisor and 'الكل' not in selected_supervisor: df_filtered = df_filtered[df_filtered['Supervisor_Engineer'].isin(selected_supervisor)]
     if selected_category: df_filtered = df_filtered[df_filtered['Category'].isin(selected_category)]
@@ -401,7 +389,6 @@ def filter_sidebar(df):
     if date_range:
         df_filtered = df_filtered[(df_filtered['Report_Date'] >= start_date) & (df_filtered['Report_Date'] <= end_date)]
     
-    # إرجاع كل من DataFrame المفلتر وقائمة التصنيفات المختارة
     return df_filtered, selected_category
 
 # ----------------------------------------------
@@ -418,6 +405,7 @@ st.sidebar.title("التنقل في لوحة التحكم")
 selection = st.sidebar.radio("اختر الصفحة:", list(PAGES.keys()))
 page = PAGES[selection]
 
+
 # ----------------------------------------------------
 # -------------------- صفحة الملخص التنفيذي --------------------
 # ----------------------------------------------------
@@ -425,11 +413,10 @@ page = PAGES[selection]
 if page == "executive_summary":
     st.title("ملخص تنفيذي: المؤشرات الرئيسية")
     
-    # هنا لا نحتاج قائمة التصنيفات، نستقبل DataFrame فقط
     filtered_df, _ = filter_sidebar(df)
     
-    # تجميع البيانات الأخيرة بعد الفلترة
     if not filtered_df.empty and 'Report_Date' in filtered_df.columns:
+        # تجميع البيانات الأخيرة بعد الفلترة
         filtered_latest_df = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
     else:
         st.warning("لا توجد بيانات مطابقة لمعايير الفلترة الحالية.")
@@ -527,7 +514,7 @@ if page == "executive_summary":
             margin=dict(l=20, r=20, t=40, b=20),
             plot_bgcolor='white',
             yaxis={'autorange': "reversed"},
-            font=dict(family='Tajawal', size=12) # تطبيق الخط العربي
+            font=dict(family='Tajawal', size=12) 
         )
         st.plotly_chart(fig_scores, use_container_width=True)
 
@@ -536,7 +523,6 @@ if page == "executive_summary":
         # عرض المخطط الزمني للإنجاز الفعلي مقابل المخطط
         st.subheader("تتبع أداء الإنجاز الزمني", anchor=False)
         
-        # تجميع البيانات شهرياً (المتوسط)
         if 'Report_Date' in filtered_df.columns:
             monthly_data = filtered_df.groupby(filtered_df['Report_Date'].dt.to_period('M'))[[
                 'Actual_Completion_Rate', 'Target_Completion_Rate'
@@ -578,7 +564,6 @@ if page == "executive_summary":
 elif page == "detailed_analysis":
     st.title("تحليل تفصيلي: تتبع الأداء التخصصي")
     
-    # استقبال كل من DataFrame المفلتر وقائمة التصنيفات المختارة
     filtered_df, selected_category_list = filter_sidebar(df)
     
     # 1. تحديد التصنيف المختار الصالح (من قائمة اختيار المستخدم)
@@ -597,12 +582,14 @@ elif page == "detailed_analysis":
         st.stop()
 
     current_category = valid_selected_categories[0]
+    
+    # **[الخطوة المصححة]** تأكد من أن DataFrame تم فلترته بشكل صحيح لنفس التصنيف
+    filtered_df = filtered_df[filtered_df['Category'] == current_category].copy()
         
-    # تحقق إضافي إذا كانت البيانات فارغة بعد تطبيق كل الفلاتر
     if filtered_df.empty:
         st.warning(f"لا توجد بيانات للعقود المصنفة كـ **{current_category}** ضمن الفلاتر المطبقة (التاريخ، المحور، المهندس المشرف، الخ.). يرجى تعديل هذه الفلاتر.")
         st.stop()
-
+    
     st.info(f"عرض مؤشرات الأداء التخصصية لـ **{current_category}**")
     st.divider()
 
@@ -620,11 +607,22 @@ elif page == "detailed_analysis":
         ('الأرصفة (تراكمي)', 'Pave_Cum_Actual', 'Pave_Cum_Target'),
         ('السلامة المرورية (شهري)', 'Traffic_Monthly_Actual', 'Traffic_Monthly_Target'),
     ]
-
-    target_metrics_display = LIGHTING_METRICS if current_category == 'انارة' else ROADS_METRICS
     
-    # 3. عرض الرسوم البيانية التراكمية الرئيسية
-    main_metric_name, actual_col, target_col = target_metrics_display[0]
+    # 3. تحديد المتغيرات الرئيسية بشكل حاسم داخل الكتلة الشرطية
+    if current_category == 'انارة':
+        target_metrics_display = LIGHTING_METRICS
+        actual_col = 'L_Rep_Col_Actual'
+        target_col = 'L_Rep_Col_Target'
+        chart_title_main = "تتبع أداء أعمال الإنارة التراكمي (استبدال أعمدة)"
+
+    else: # current_category == 'طرق'
+        target_metrics_display = ROADS_METRICS
+        actual_col = 'FR_Cum_Actual'
+        target_col = 'FR_Cum_Target'
+        chart_title_main = "تتبع أداء أعمال الطرق التراكمي (الفرقة الرئيسية)"
+
+    # 4. عرض الرسوم البيانية التراكمية الرئيسية
+    main_metric_name, _, _ = target_metrics_display[0]
     
     st.subheader(f"تتبع الأداء التراكمي: {main_metric_name}", anchor=False)
     
@@ -636,7 +634,6 @@ elif page == "detailed_analysis":
             
         monthly_data['Report_Date'] = monthly_data['Report_Date'].dt.to_timestamp()
         
-        # تحويل النسب لعرضها بـ 100%
         monthly_data[actual_col] = monthly_data[actual_col] * 100
         monthly_data[target_col] = monthly_data[target_col] * 100
             
@@ -655,39 +652,42 @@ elif page == "detailed_analysis":
         fig_cum.update_layout(font=dict(family='Tajawal', size=12))
         st.plotly_chart(fig_cum, use_container_width=True)
     else:
-        st.warning(f"بيانات الأداء التراكمي لـ {main_metric_name} غير متوفرة بشكل كافٍ أو مفقودة في الأعمدة.")
+        st.warning(f"بيانات الأداء التراكمي لـ **{main_metric_name}** غير متوفرة بشكل كافٍ أو مفقودة في الأعمدة لهذا التصنيف.")
     
 
     st.divider()
         
-    # 4. عرض جميع المؤشرات التخصصية في بطاقات
+    # 5. عرض جميع المؤشرات التخصصية في بطاقات
     st.subheader(f"ملخص جميع مؤشرات {current_category} (المتوسط التراكمي/الشهري)", anchor=False)
         
     cols = st.columns(4)
     col_index = 0
         
-    # استخدام البيانات المفلترة للوصول إلى آخر تقرير لكل عقد (للحسابات التراكمية والنهائية)
+    # استخدام البيانات المفلترة للوصول إلى آخر تقرير لكل عقد
     latest_per_contract = filtered_df.loc[filtered_df.groupby('Contract_ID')['Report_Date'].idxmax()]
         
-    # دمج جميع الأعمدة المطلوبة في قائمة واحدة للحسابات
-    all_metrics_to_calculate = [col for _, col, _ in target_metrics_display] + [col for _, _, col in target_metrics_display]
-    
     for metric_ar_name, actual_metric, target_metric in target_metrics_display:
         
-        # حساب متوسط القيمتين (الفعلي والمستهدف)
-        avg_actual_value = latest_per_contract[actual_metric].fillna(0).mean() * 100
-        avg_target_value = latest_per_contract[target_metric].fillna(0).mean() * 100
-        
-        # حساب الانحراف
-        deviation = avg_actual_value - avg_target_value
+        if actual_metric in latest_per_contract.columns and target_metric in latest_per_contract.columns:
+            # حساب متوسط القيمتين (الفعلي والمستهدف)
+            avg_actual_value = latest_per_contract[actual_metric].fillna(0).mean() * 100
+            avg_target_value = latest_per_contract[target_metric].fillna(0).mean() * 100
             
-        cols[col_index % 4].metric(
-            metric_ar_name, 
-            f"{avg_actual_value:.2f}%",
-            delta=f"{deviation:.2f}%",
-            delta_color='normal' if deviation >= 0 else 'inverse'
-        )
-        col_index += 1
+            # حساب الانحراف
+            deviation = avg_actual_value - avg_target_value
+                
+            cols[col_index % 4].metric(
+                metric_ar_name, 
+                f"{avg_actual_value:.2f}%",
+                delta=f"{deviation:+.2f}%", # إضافة + أو - لتمييز الانحراف
+                delta_color='normal' if deviation >= 0 else 'inverse'
+            )
+            col_index += 1
+        else:
+            # رسالة في حال عدم وجود العمود في البيانات
+            cols[col_index % 4].warning(f"مؤشر {metric_ar_name}: البيانات غير متوفرة")
+            col_index += 1
+
 
 # ----------------------------------------------------
 # -------------------- صفحة عرض كامل التفاصيل --------------------
@@ -696,7 +696,6 @@ elif page == "detailed_analysis":
 elif page == "raw_data_view":
     st.title("عرض كامل التفاصيل (البيانات الخام)")
     
-    # هنا لا نحتاج قائمة التصنيفات، نستقبل DataFrame فقط
     filtered_df, _ = filter_sidebar(df)
     
     st.subheader("جدول بيانات التقارير المفصل", anchor=False)
@@ -705,7 +704,6 @@ elif page == "raw_data_view":
          st.warning("لا توجد بيانات مطابقة لمعايير الفلترة الحالية.")
          st.stop()
     
-    # قائمة الأعمدة المراد عرضها في الجدول (تم تحسينها لتكون موجزة ومهمة)
     display_cols_brief = [
         'Contract_ID', 'Report_Date', 'Contractor', 'Supervisor_Engineer', 'Project_Name', 
         'Actual_Completion_Rate', 'Target_Completion_Rate', 'Actual_Deviation_Rate', 'Project_Deviation_Status',
