@@ -105,5 +105,8 @@ COLUMN_MAP = {
     
     'مؤشر أداء الطوارئ التراكمي المستهدف': 'Emergency_Cum_Target', 'مؤشر أداء الطوارئ التراكمي الفعلى': 'Emergency_Cum_Actual',
     'مؤشر أداء الطوارئ الشهري المستهدف': 'Emergency_Monthly_Target', 'مؤشر أداء الطوارئ الشهري الفعلى': 'Emergency_Monthly_Actual',
+'مؤشر غسيل الدهانات التراكمي المستهدف': 'Wash_Cum_Target', 'مؤشر غسيل الدهانات التراكمي الفعلى': 'Wash_Cum_Actual',
+    'مؤشر غسيل الدهانات الشهري المستهدف': 'Wash_Monthly_Target', 'مؤشر غسيل الدهانات الشهري الفعلى': 'Wash_Monthly_Actual',
     
-    'مؤشر غسيل الدهانات التراكمي المستهدف': 'Wash_Cum_Target', 'مؤشر
+    'موشر اعمال أخرى تراكمي المستهدف': 'Other_Cum_Target', 'موشر اعمال أخرى تراكمي الفعلى': 'Other_Cum_Actual',
+    'موشر اعمال أخرى الشهري المستهدف': 'Other_Monthly_Target', 'موشر اعمال أخرى الشهري الفعلى': 'Other_Monthly_Actual',
