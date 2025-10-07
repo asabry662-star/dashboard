@@ -126,7 +126,7 @@ COLUMN_MAP = {
     'نسبة دورة الحفر 11': 'Hole_Rate_11', 'نسبة خصم دورة الحفر 11': 'Hole_Discount_11',
     'نسبة دورة الحفر 12': 'Hole_Rate_12', 'نسبة خصم دورة الحفر 12': 'Hole_Discount_12',
 
-    # مؤشرات الإنارة (التفصيلية) - تم تصحيح بناء الجملة هنا
+    # مؤشرات الإنارة (التفصيلية)
     'استبدال وتوريد أعمدة الإنارة - تراكمي مستهدف': 'L_Rep_Col_Target', 
     'استبدال وتوريد أعمدة الإنارة - تراكمي فعلي': 'L_Rep_Col_Actual',
     'استبدال وتوريد أعمدة الإنارة - شهري مستهدف': 'L_Rep_Col_Monthly_Target', 
@@ -162,10 +162,15 @@ REVERSE_COLUMN_MAP = {v: k for k, v in COLUMN_MAP.items()}
 
 # قراءة مفاتيح Airtable من Streamlit Secrets
 try:
+    # يجب استبدال هذا الجزء بقراءة مفاتيحك الفعلية
+    # في بيئة Code Interpreter، يجب عليك توفير المفاتيح أو إزالتها لتجنب الخطأ
+    # في بيئة Streamlit Cloud، يتم قراءة المفاتيح من ملف .streamlit/secrets.toml
     AIRTABLE_API_KEY = st.secrets["airtable"]["api_key"]
     AIRTABLE_BASE_ID = st.secrets["airtable"]["base_id"]
     AIRTABLE_TABLE_NAME = st.secrets["airtable"]["table_name"]
 except KeyError:
+    # يجب تعليق هذا السطر في بيئة Code Interpreter أو توفير مفاتيح وهمية
+    # إذا كنت تستخدم Streamlit Cloud، تأكد من وجود مفاتيحك في secrets.toml
     st.error("خطأ: يرجى التأكد من إعداد مفاتيح Airtable (api_key, base_id, table_name) في Streamlit Secrets.")
     st.stop()
 
@@ -194,11 +199,13 @@ def load_and_process_data():
     rename_dict = {col_ar: col_en for col_ar, col_en in COLUMN_MAP.items() if col_ar in df.columns}
     df.rename(columns=rename_dict, inplace=True)
     
-    # ------------------ معالجة الأخطاء ------------------
+    # ------------------ معالجة الأخطاء (KeyError Fix applied here) ------------------
     
     # الأعمدة المطلوبة لضمان عدم الانهيار في أي صفحة
+    # تم إضافة 'Delayed_Financial_Value' هنا
     REQUIRED_COLS = [
         'Actual_Financial_Value', 'Target_Financial_Value', 'Total_Contract_Value',
+        'Delayed_Financial_Value', # <--- **العمود الذي تم إضافته لحل مشكلة KeyError**
         'Actual_Completion_Rate', 'Target_Completion_Rate', 'Actual_Deviation_Rate', 
         'Contract_ID', 'Report_Date', 'Category', 'Contract_Duration', 'Elapsed_Time_Rate',
         'Contractor_Overall_Score', 'HSE_Score', 'Communication_Score', 'Target_Achievement_Score', 'Quality_Score'
@@ -233,7 +240,7 @@ def load_and_process_data():
     for col in rate_cols_to_process:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0) / 100
 
-    # 6. تنظيف وتحويل القيم المالية والـ Scores
+    # 6. تنظيف وتحويل القيم المالية والـ Scores (لن تحدث مشكلة KeyError هنا بعد الإصلاح)
     financial_cols = ['Total_Contract_Value', 'Actual_Financial_Value', 'Target_Financial_Value', 'Delayed_Financial_Value']
     score_cols = ['HSE_Score', 'Communication_Score', 'Target_Achievement_Score', 'Quality_Score', 'Contractor_Overall_Score']
     
@@ -468,6 +475,7 @@ elif page == "detailed_analysis":
         
         if current_category == 'انارة':
             st.info("عرض المؤشرات التراكمية والشهرية الخاصة بـ **الإنارة**.")
+            # التأكد من أن المؤشر موجود في أعمدة الداتا فريم بعد الفلترة
             target_metrics = [m for m in LIGHTING_METRICS if m in filtered_df.columns]
             chart_title = "تتبع أداء أعمال الإنارة التراكمي (استبدال أعمدة)"
             actual_col = 'L_Rep_Col_Actual'
@@ -475,6 +483,7 @@ elif page == "detailed_analysis":
             
         elif current_category == 'طرق':
             st.info("عرض المؤشرات التراكمية والشهرية الخاصة بـ **الطرق**.")
+            # التأكد من أن المؤشر موجود في أعمدة الداتا فريم بعد الفلترة
             target_metrics = [m for m in ROADS_METRICS if m in filtered_df.columns]
             chart_title = "تتبع أداء أعمال الطرق التراكمي (الفرقة الرئيسية)"
             actual_col = 'FR_Cum_Actual'
